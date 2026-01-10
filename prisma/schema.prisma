@@ -1,0 +1,641 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// =====================================================
+// PRISMA SCHEMA (PRODUCTION READY)
+// =====================================================
+
+enum AuthProvider {
+  password
+  google
+  apple
+  trinity_network
+}
+
+enum Gender {
+  male
+  female
+  other
+}
+
+enum UserStatus {
+  active
+  inactive
+  blocked
+  deleted
+}
+
+// =====================================================
+// USERS
+// =====================================================
+
+enum UserBatch {
+  NONE
+  STAR_1   // 10K+ followers
+  STAR_2   // 100K+ followers
+  STAR_3   // 500K+ followers
+  STAR_4   // 1M+ followers
+  STAR_5   // 5M+ followers
+}
+
+model User {
+  id       String @id @default(uuid()) @db.Uuid
+  username String @unique
+  email    String @unique
+  password String
+
+  first_name String?
+  last_name  String?
+  bio        String?
+  avatarUrl  String?
+  bannerUrl  String?
+
+  isVerified Boolean    @default(false)
+  status     UserStatus @default(active)
+
+  batch       UserBatch @default(NONE)
+  isPremium   Boolean @default(false)
+  premiumEnds DateTime?
+
+  lastSeenAt DateTime?
+  deletedAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  profile        UserProfile?
+  authMethods    UserAuth[]
+  sessions       UserSession[]
+  totp           UserTotp?
+  backupCodes    UserBackupCode[]
+  otps           UserOtp[]
+  passwordResets PasswordResetToken[]
+  admin          Admin?
+
+  posts     Post[]
+  postLikes PostLike[]
+  comments  Comment[]
+  postViews PostView[]
+  bookmarks Bookmark[]
+
+  // 🔔 FIXED NOTIFICATION RELATIONS
+  notifications      Notification[] @relation("UserNotifications") // received
+  actedNotifications Notification[] @relation("ActorNotifications") // triggered
+
+  // 📢 ADS
+  adAccounts AdAccount[]
+  adCreatives AdCreative[]
+
+  // 👥 FOLLOW SYSTEM
+  followers Follow[] @relation("Followers")
+  following Follow[] @relation("Following")
+
+  @@index([id], map: "idx_active_users")
+}
+
+// =====================================================
+// USER PROFILE (1:1)
+// =====================================================
+
+model UserProfile {
+  userId String @id @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  gender     Gender    @default(other)
+  birthdate  DateTime?
+  location   String?
+  websiteUrl String?
+
+  socialTwitter   String?
+  socialFacebook  String?
+  socialLinkedin  String?
+  socialInstagram String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// =====================================================
+// AUTH METHODS
+// =====================================================
+
+model UserAuth {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  provider     AuthProvider
+  identifier   String
+  passwordHash String?
+
+  isPrimary  Boolean @default(false)
+  isVerified Boolean @default(false)
+
+  lastLoginAt DateTime?
+  loginIp     String?
+  userAgent   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([provider, identifier])
+  @@index([userId])
+}
+
+// =====================================================
+// USER SESSIONS (ZERO TRUST)
+// =====================================================
+
+model UserSession {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  refreshTokenHash  String  @unique
+  previousTokenHash String?
+
+  deviceName String?
+  ipAddress  String?
+  userAgent  String?
+
+  expiresAt DateTime
+  revokedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// =====================================================
+// LOGIN ATTEMPTS
+// =====================================================
+
+model LoginAttempt {
+  id         String   @id @default(uuid()) @db.Uuid
+  identifier String
+  ipAddress  String
+  success    Boolean
+  createdAt  DateTime @default(now())
+
+  @@index([identifier, createdAt])
+}
+
+// =====================================================
+// PASSWORD RESET TOKENS
+// =====================================================
+model PasswordResetToken {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+
+  createdAt DateTime @default(now())
+}
+
+// =====================================================
+// TOTP (2FA)
+// =====================================================
+
+model UserTotp {
+  userId String @id @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  secret String
+  issuer String @default("Stardom")
+
+  enabled    Boolean   @default(false)
+  verifiedAt DateTime?
+
+  createdAt DateTime @default(now())
+}
+
+// =====================================================
+// BACKUP CODES
+// =====================================================
+
+model UserBackupCode {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  codeHash String
+  usedAt   DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// =====================================================
+// OTPs (EMAIL / LOGIN / RESET)
+// =====================================================
+
+model UserOtp {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  purpose  String
+  codeHash String
+
+  expiresAt  DateTime
+  consumedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, purpose])
+}
+
+// =================================== ADMINS ===================================
+enum AdminRole {
+  superadmin
+  admin
+  moderator
+  support
+  user
+}
+
+enum AdminPermission {
+  manage_users
+  manage_content
+  view_reports
+  manage_settings
+}
+
+model Admin {
+  id     String    @id @default(uuid()) @db.Uuid
+  userId String    @unique @db.Uuid
+  role   AdminRole @default(user)
+
+  isApproved Boolean    @default(false)
+  status     UserStatus @default(active)
+
+  permissions AdminPermission[]
+
+  activitedAt DateTime?
+  activatedBy String?   @db.Uuid
+
+  deactivatedAt DateTime?
+  deactivatedBy String?   @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// =================================== POSTS ===================================
+
+enum PostType {
+  text
+  image
+  video
+  reel
+}
+
+enum NotificationType {
+  like
+  comment
+  follow
+  mention
+  repost
+}
+
+
+enum PostVisibility {
+  public
+  followers
+  private
+}
+
+enum PostStatus {
+  active
+  archived
+  draft
+  deleted
+}
+
+// =======================
+// MODELS
+// =======================
+
+model Post {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  content  String?
+  postType PostType
+
+  mediaUrl     String?
+  thumbnailUrl String?
+  durationSec  Int?
+
+  isReply      Boolean @default(false)
+  parentPostId String? @db.Uuid
+  parentPost   Post?   @relation("PostReplies", fields: [parentPostId], references: [id], onDelete: Cascade)
+  replies      Post[]  @relation("PostReplies")
+
+  likeCount    Int    @default(0)
+  commentCount Int    @default(0)
+  viewCount    BigInt @default(0)
+
+  visibility PostVisibility @default(public)
+  status     PostStatus     @default(active)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  reel          Reel?
+  likes         PostLike[]
+  comments      Comment[]
+  views         PostView[]
+  hashtags      PostHashtag[]
+  bookmarks     Bookmark[]
+  notifications Notification[]
+
+  @@index([userId])
+  @@index([createdAt(sort: Desc)])
+}
+
+model Reel {
+  postId String @id @db.Uuid
+  post   Post   @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  musicName   String?
+  musicUrl    String?
+  loopEnabled Boolean @default(true)
+}
+
+model PostLike {
+  userId    String   @db.Uuid
+  postId    String   @db.Uuid
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@id([userId, postId])
+}
+
+model Comment {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  postId String @db.Uuid
+
+  content  String
+  parentId String? @db.Uuid
+
+  likeCount Int      @default(0)
+  createdAt DateTime @default(now())
+
+  user    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post    Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  parent  Comment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies Comment[] @relation("CommentReplies")
+
+  @@index([postId])
+}
+
+model Follow {
+  followerId  String   @db.Uuid
+  followingId String   @db.Uuid
+  createdAt   DateTime @default(now())
+
+  follower  User @relation("Followers", fields: [followerId], references: [id], onDelete: Cascade)
+  following User @relation("Following", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@id([followerId, followingId])
+}
+
+model PostView {
+  userId    String   @db.Uuid
+  postId    String   @db.Uuid
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@id([userId, postId])
+}
+
+model Hashtag {
+  id  String @id @default(uuid()) @db.Uuid
+  tag String @unique
+
+  posts PostHashtag[]
+}
+
+model PostHashtag {
+  postId    String @db.Uuid
+  hashtagId String @db.Uuid
+
+  post    Post    @relation(fields: [postId], references: [id], onDelete: Cascade)
+  hashtag Hashtag @relation(fields: [hashtagId], references: [id], onDelete: Cascade)
+
+  @@id([postId, hashtagId])
+}
+
+model Bookmark {
+  userId    String   @db.Uuid
+  postId    String   @db.Uuid
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@id([userId, postId])
+}
+
+model Notification {
+  id      String  @id @default(uuid()) @db.Uuid
+  userId  String  @db.Uuid
+  actorId String  @db.Uuid
+  postId  String? @db.Uuid
+
+  type      NotificationType
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  user  User  @relation("UserNotifications", fields: [userId], references: [id], onDelete: Cascade)
+  actor User  @relation("ActorNotifications", fields: [actorId], references: [id], onDelete: Cascade)
+  post  Post? @relation(fields: [postId], references: [id], onDelete: Cascade)
+}
+
+
+// ====================================== MIGRATION HISTORY ======================================
+enum AdObjective {
+  traffic
+  engagement
+  app_install
+  video_views
+  conversions
+}
+
+enum AdStatus {
+  draft
+  pending_review
+  active
+  paused
+  completed
+  rejected
+}
+
+enum AdPlacement {
+  feed
+  reel
+  story
+  profile
+}
+
+enum BillingType {
+  cpc
+  cpm
+  cpa
+}
+
+enum Currency {
+  USD
+  INR
+}
+
+
+model AdAccount {
+  id        String @id @default(uuid()) @db.Uuid
+  userId    String @db.Uuid
+  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name      String
+  balance   Decimal @default(0)
+  currency  Currency  @default(USD)
+
+  isActive  Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  campaigns AdCampaign[]
+
+  @@index([userId])
+}
+
+model AdCampaign {
+  id          String @id @default(uuid()) @db.Uuid
+  adAccountId String @db.Uuid
+  adAccount   AdAccount @relation(fields: [adAccountId], references: [id], onDelete: Cascade)
+
+  name        String
+  objective   AdObjective
+  status      AdStatus @default(draft)
+
+  dailyBudget Decimal
+  totalBudget Decimal?
+
+  startAt DateTime
+  endAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  adSets AdSet[]
+
+  @@index([adAccountId])
+}
+
+model AdSet {
+  id           String @id @default(uuid()) @db.Uuid
+  campaignId   String @db.Uuid
+  campaign     AdCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  name         String
+  placement    AdPlacement
+  billingType  BillingType
+  bidAmount    Decimal
+
+  countries    String[] // ISO codes
+  ageMin       Int?
+  ageMax       Int?
+  genders      String[] // male / female / other
+
+  startAt DateTime
+  endAt   DateTime?
+
+  status   AdStatus @default(draft)
+
+  ads Ad[]
+
+  @@index([campaignId])
+}
+model AdCreative {
+  id        String @id @default(uuid()) @db.Uuid
+  userId    String @db.Uuid
+  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  title     String?
+  body      String?
+  mediaUrl  String
+  ctaText   String?
+  targetUrl String?
+
+  createdAt DateTime @default(now())
+
+  ads Ad[]
+}
+model Ad {
+  id           String @id @default(uuid()) @db.Uuid
+  adSetId      String @db.Uuid
+  creativeId   String @db.Uuid
+
+  adSet        AdSet       @relation(fields: [adSetId], references: [id], onDelete: Cascade)
+  creative     AdCreative  @relation(fields: [creativeId], references: [id], onDelete: Cascade)
+
+  status       AdStatus @default(draft)
+  approvalNote String?
+
+  createdAt DateTime @default(now())
+
+  events AdEvent[]
+
+  @@index([adSetId])
+}
+
+enum AdEventType {
+  impression
+  click
+  conversion
+}
+
+model AdEvent {
+  id      String @id @default(uuid()) @db.Uuid
+  adId    String @db.Uuid
+  ad      Ad     @relation(fields: [adId], references: [id], onDelete: Cascade)
+
+  type    AdEventType
+  cost    Decimal @default(0)
+
+  ip      String?
+  userId  String? @db.Uuid
+
+  createdAt DateTime @default(now())
+
+  @@index([adId, type])
+  @@index([createdAt])
+}
