@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { validationInput } from  "../../utils/core.ts";
+import { validationInput } from  "../../utils/validation.ts";
 
 const usernameSchema = z.object({
   username: z
@@ -26,4 +26,10 @@ const registerSchema = usernameSchema.extend({
     path: ["confirmPassword"],
 });
 
+const verifyRegistrationSchema = z.object({
+  token: z.string('Token is required'),
+  otp: z.string('OTP is required').min(6, 'OTP must be 6 digit').max(6, 'OTP must be 6 digit')
+})
+
 export const registerValidation = validationInput(registerSchema);
+export const registerValidation2 = validationInput(verifyRegistrationSchema);

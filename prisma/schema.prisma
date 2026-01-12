@@ -43,11 +43,11 @@ enum UserStatus {
 
 enum UserBatch {
   NONE
-  STAR_1   // 10K+ followers
-  STAR_2   // 100K+ followers
-  STAR_3   // 500K+ followers
-  STAR_4   // 1M+ followers
-  STAR_5   // 5M+ followers
+  STAR_1 // 10K+ followers
+  STAR_2 // 100K+ followers
+  STAR_3 // 500K+ followers
+  STAR_4 // 1M+ followers
+  STAR_5 // 5M+ followers
 }
 
 model User {
@@ -66,7 +66,7 @@ model User {
   status     UserStatus @default(active)
 
   batch       UserBatch @default(NONE)
-  isPremium   Boolean @default(false)
+  isPremium   Boolean   @default(false)
   premiumEnds DateTime?
 
   lastSeenAt DateTime?
@@ -96,7 +96,7 @@ model User {
   actedNotifications Notification[] @relation("ActorNotifications") // triggered
 
   // 📢 ADS
-  adAccounts AdAccount[]
+  adAccounts  AdAccount[]
   adCreatives AdCreative[]
 
   // 👥 FOLLOW SYSTEM
@@ -104,6 +104,14 @@ model User {
   following Follow[] @relation("Following")
 
   @@index([id], map: "idx_active_users")
+}
+
+model TokenHash {
+  id  String @id @default(uuid()) @db.Uuid
+  token     String
+  tokenHash String
+  userIp String?
+  createdAt DateTime @default(now())
 }
 
 // =====================================================
@@ -318,7 +326,6 @@ enum NotificationType {
   repost
 }
 
-
 enum PostVisibility {
   public
   followers
@@ -480,7 +487,6 @@ model Notification {
   post  Post? @relation(fields: [postId], references: [id], onDelete: Cascade)
 }
 
-
 // ====================================== MIGRATION HISTORY ======================================
 enum AdObjective {
   traffic
@@ -517,17 +523,16 @@ enum Currency {
   INR
 }
 
-
 model AdAccount {
-  id        String @id @default(uuid()) @db.Uuid
-  userId    String @db.Uuid
-  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  name      String
-  balance   Decimal @default(0)
-  currency  Currency  @default(USD)
+  name     String
+  balance  Decimal  @default(0)
+  currency Currency @default(USD)
 
-  isActive  Boolean @default(true)
+  isActive Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -538,13 +543,13 @@ model AdAccount {
 }
 
 model AdCampaign {
-  id          String @id @default(uuid()) @db.Uuid
-  adAccountId String @db.Uuid
+  id          String    @id @default(uuid()) @db.Uuid
+  adAccountId String    @db.Uuid
   adAccount   AdAccount @relation(fields: [adAccountId], references: [id], onDelete: Cascade)
 
-  name        String
-  objective   AdObjective
-  status      AdStatus @default(draft)
+  name      String
+  objective AdObjective
+  status    AdStatus    @default(draft)
 
   dailyBudget Decimal
   totalBudget Decimal?
@@ -561,33 +566,34 @@ model AdCampaign {
 }
 
 model AdSet {
-  id           String @id @default(uuid()) @db.Uuid
-  campaignId   String @db.Uuid
-  campaign     AdCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  id         String     @id @default(uuid()) @db.Uuid
+  campaignId String     @db.Uuid
+  campaign   AdCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
-  name         String
-  placement    AdPlacement
-  billingType  BillingType
-  bidAmount    Decimal
+  name        String
+  placement   AdPlacement
+  billingType BillingType
+  bidAmount   Decimal
 
-  countries    String[] // ISO codes
-  ageMin       Int?
-  ageMax       Int?
-  genders      String[] // male / female / other
+  countries String[] // ISO codes
+  ageMin    Int?
+  ageMax    Int?
+  genders   String[] // male / female / other
 
   startAt DateTime
   endAt   DateTime?
 
-  status   AdStatus @default(draft)
+  status AdStatus @default(draft)
 
   ads Ad[]
 
   @@index([campaignId])
 }
+
 model AdCreative {
-  id        String @id @default(uuid()) @db.Uuid
-  userId    String @db.Uuid
-  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   title     String?
   body      String?
@@ -599,13 +605,14 @@ model AdCreative {
 
   ads Ad[]
 }
-model Ad {
-  id           String @id @default(uuid()) @db.Uuid
-  adSetId      String @db.Uuid
-  creativeId   String @db.Uuid
 
-  adSet        AdSet       @relation(fields: [adSetId], references: [id], onDelete: Cascade)
-  creative     AdCreative  @relation(fields: [creativeId], references: [id], onDelete: Cascade)
+model Ad {
+  id         String @id @default(uuid()) @db.Uuid
+  adSetId    String @db.Uuid
+  creativeId String @db.Uuid
+
+  adSet    AdSet      @relation(fields: [adSetId], references: [id], onDelete: Cascade)
+  creative AdCreative @relation(fields: [creativeId], references: [id], onDelete: Cascade)
 
   status       AdStatus @default(draft)
   approvalNote String?
@@ -624,15 +631,15 @@ enum AdEventType {
 }
 
 model AdEvent {
-  id      String @id @default(uuid()) @db.Uuid
-  adId    String @db.Uuid
-  ad      Ad     @relation(fields: [adId], references: [id], onDelete: Cascade)
+  id   String @id @default(uuid()) @db.Uuid
+  adId String @db.Uuid
+  ad   Ad     @relation(fields: [adId], references: [id], onDelete: Cascade)
 
-  type    AdEventType
-  cost    Decimal @default(0)
+  type AdEventType
+  cost Decimal     @default(0)
 
-  ip      String?
-  userId  String? @db.Uuid
+  ip     String?
+  userId String? @db.Uuid
 
   createdAt DateTime @default(now())
 
