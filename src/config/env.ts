@@ -5,12 +5,23 @@ config();
 
 const envSchema = z.object({
   PORT: z.coerce.number().default(3000),
-  NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
+  NODE_ENV: z
+    .enum(["development", "production", "test"])
+    .default("development"),
+
+  APP_NAME: z.string().default("Stardom"),
 
   DATABASE_URL: z.string(),
 
   REDIS_HOST: z.string(),
   REDIS_PORT: z.coerce.number().default(6379),
+
+  EMAIL_HOST: z.string(),
+  EMAIL_PORT: z.enum(["465", "451"]),
+  EMAIL_SECURE: z.coerce.boolean().default(false),
+  EMAIL_USER: z.string(),
+  EMAIL_PASS: z.string(),
+  EMAIL_FROM: z.string(),
 
   JWT_ACCESS_SECRET: z.string(),
   JWT_ACCESS_EXPIRES_IN: z.string().default("15m"),

@@ -1,93 +1,9 @@
-import { z, ZodTypeAny } from "zod";
 import crypto from "crypto";
-import { JSDOM } from "jsdom";
-import createDOMPurify from "dompurify";
-import type { Request, Response, NextFunction, RequestHandler } from "express";
 
-// ---------------------------------------------
-// DOMPurify setup (Node-safe)
-// ---------------------------------------------
-const window = new JSDOM("").window;
-const purify = createDOMPurify(window);
-
-// ---------------------------------------------
-// Recursive sanitizer (fully typed)
-// ---------------------------------------------
-type Sanitizable =
-  | string
-  | number
-  | boolean
-  | null
-  | undefined
-  | Sanitizable[]
-  | { [key: string]: Sanitizable };
-
-const recursiveSanitize = (input: Sanitizable): Sanitizable => {
-  if (Array.isArray(input)) {
-    return input.map(recursiveSanitize);
-  }
-
-  if (typeof input === "object" && input !== null) {
-    return Object.fromEntries(
-      Object.entries(input).map(([key, value]) => [
-        key,
-        recursiveSanitize(value as Sanitizable),
-      ])
-    );
-  }
-
-  if (typeof input === "string") {
-    return purify.sanitize(input);
-  }
-
-  return input;
-};
-
-// ---------------------------------------------
-// Validation Middleware Factory
-// ---------------------------------------------
-type RequestSource = "body" | "query" | "params";
-
-export function validationInput(
-  schema: ZodTypeAny,
-  source: RequestSource = "body",
-  sanitize = true
-): RequestHandler {
-  return (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const result = schema.safeParse(req[source]);
-
-      if (!result.success) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid input",
-          errors: result.error.flatten().fieldErrors,
-        });
-      }
-
-      req[source] = sanitize
-        ? (recursiveSanitize(result.data as Sanitizable) as any)
-        : result.data;
-
-      next();
-    } catch (err) {
-      console.error(
-        "Validation middleware error:",
-        err instanceof Error ? err.message : err
-      );
-
-      return res.status(500).json({
-        success: false,
-        message: "Internal Server Error",
-      });
-    }
-  };
-}
-
-// ---------------------------------------------
-// Secure OTP Generator
-// ---------------------------------------------
-export function generateSecureOTP(length = 6): string {
+// --------------------------- OTP -----------------------------------------------
+export function generateOTP(
+  length = 6
+): { otp: string; otpHash: string } {
   const digits = "0123456789";
   let otp = "";
 
@@ -95,5 +11,51 @@ export function generateSecureOTP(length = 6): string {
     otp += digits[crypto.randomInt(0, digits.length)];
   }
 
-  return otp;
+  const otpHash = crypto
+    .createHash("sha256")
+    .update(otp)
+    .digest("hex");
+
+  return { otp, otpHash };
+}
+
+export function verifyOTP(
+  inputOTP: string,
+  storedHash: string
+): boolean {
+  const hash = crypto
+    .createHash("sha256")
+    .update(inputOTP)
+    .digest("hex");
+
+  return crypto.timingSafeEqual(
+    Buffer.from(hash),
+    Buffer.from(storedHash)
+  );
+}
+
+// --------------------------- TOKEN -----------------------------------------------
+export function generateToken(): {
+  token: string, tokenHash: string
+} {
+  const token = crypto.randomBytes(32).toString("base64url");
+  const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+
+  return { token, tokenHash };
+}
+
+export function verifyToken(
+  receivedToken: string,
+  storedHash: string
+): boolean {
+  const receivedHash = crypto
+    .createHash("sha256")
+    .update(receivedToken)
+    .digest("hex");
+
+  // timing-safe comparison
+  return crypto.timingSafeEqual(
+    Buffer.from(receivedHash),
+    Buffer.from(storedHash)
+  );
 }
