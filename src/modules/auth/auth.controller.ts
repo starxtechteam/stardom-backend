@@ -4,8 +4,9 @@ import { ApiError } from "../../utils/api-error.js";
 import { prisma } from "../../config/prisma.config.ts";
 import { redisClient, REDIS_KEYS } from "../../config/redis.config.ts";
 import bcrypt from "bcryptjs";
-import { AUTH_OTP, REGISTER_TTL } from "../../constants/auth.constants.ts";
+import { AUTH_OTP } from "../../constants/auth.constants.ts";
 import { sendOtpEmail } from "../../mails/auth/registerOtp.mails.ts";
+import { sendWelcomeEmail } from "../../mails/user/welcome.mails.ts";
 import {
   generateOTP,
   verifyOTP,
@@ -13,7 +14,6 @@ import {
   verifyToken,
 } from "../../utils/core.ts";
 import { getClientIp } from "./auth.service.ts";
-import { REG_IP_KEY } from "../../constants/redisKeys.ts";
 
 export const registerStep1 = asyncHandler(
   async (
@@ -27,12 +27,6 @@ export const registerStep1 = asyncHandler(
     password = password.trim();
 
     const ip = getClientIp(req);
-    const exists = await redisClient.exists(REG_IP_KEY(ip));
-    if (exists) {
-      return res.status(429).json({
-        message: "Registration already attempted from this IP. Try later.",
-      });
-    }
 
     const userCache = await redisClient.get(REDIS_KEYS.usernameTemp(username));
     if (userCache && userCache === username) {
@@ -71,10 +65,6 @@ export const registerStep1 = asyncHandler(
 
     await prisma.tokenHash.create({
       data: { token, tokenHash, userIp: ip },
-    });
-
-    await redisClient.set(REG_IP_KEY(ip), "1", {
-      EX: REGISTER_TTL,
     });
 
     return res.status(200).json({
@@ -137,8 +127,10 @@ export const registerStep2 = asyncHandler(
         username: user.username,
         email: user.email,
         password: user.password,
-      },
+      }
     });
+
+    delete (newUser as any).password;
 
     await redisClient.del(REDIS_KEYS.registerOtp(token));
     await redisClient.del(REDIS_KEYS.userTemp(tokenhash.tokenHash));
@@ -146,6 +138,8 @@ export const registerStep2 = asyncHandler(
     await prisma.tokenHash.deleteMany({
       where: { token },
     });
+
+    sendWelcomeEmail({email: user.email, name: user.username});
 
     if (newUser) {
       return res.status(201).json({

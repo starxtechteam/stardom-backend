@@ -11,6 +11,9 @@ const envSchema = z.object({
 
   APP_NAME: z.string().default("Stardom"),
 
+  RATE_LIMIT_WINDOW_MS: z.coerce.number().default(900000),
+  RATE_LIMIT_MAX_REQUESTS: z.coerce.number().default(10),
+
   DATABASE_URL: z.string(),
 
   REDIS_HOST: z.string(),
