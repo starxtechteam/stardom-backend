@@ -22,6 +22,7 @@ enum AuthProvider {
   google
   apple
   trinity_network
+  otp_based_login
 }
 
 enum Gender {
@@ -77,7 +78,6 @@ model User {
 
   // Relations
   profile        UserProfile?
-  authMethods    UserAuth[]
   sessions       UserSession[]
   totp           UserTotp?
   backupCodes    UserBackupCode[]
@@ -137,33 +137,6 @@ model UserProfile {
 }
 
 // =====================================================
-// AUTH METHODS
-// =====================================================
-
-model UserAuth {
-  id     String @id @default(uuid()) @db.Uuid
-  userId String @db.Uuid
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  provider     AuthProvider
-  identifier   String
-  passwordHash String?
-
-  isPrimary  Boolean @default(false)
-  isVerified Boolean @default(false)
-
-  lastLoginAt DateTime?
-  loginIp     String?
-  userAgent   String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([provider, identifier])
-  @@index([userId])
-}
-
-// =====================================================
 // USER SESSIONS (ZERO TRUST)
 // =====================================================
 
@@ -196,7 +169,12 @@ model LoginAttempt {
   id         String   @id @default(uuid()) @db.Uuid
   identifier String
   ipAddress  String
+  deviceName String
+  devicetype String
+  os         String
+  browser    String
   success    Boolean
+  message     String
   createdAt  DateTime @default(now())
 
   @@index([identifier, createdAt])

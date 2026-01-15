@@ -9,6 +9,8 @@ const usernameSchema = z.object({
     .regex(/^[a-z][a-z0-9._]{2,29}$/),
 });
 
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 const registerSchema = usernameSchema.extend({
     email: z.email('Email is required').toLowerCase().trim(),
     password: z
@@ -26,10 +28,27 @@ const registerSchema = usernameSchema.extend({
     path: ["confirmPassword"],
 });
 
-const verifyRegistrationSchema = z.object({
+const verifyAuthSchema = z.object({
   token: z.string('Token is required'),
-  otp: z.string('OTP is required').min(6, 'OTP must be 6 digit').max(6, 'OTP must be 6 digit')
+  otp: z.string('OTP is required').min(6, 'Invaild OTP').max(6, 'Invaild OTP')
 })
 
+const userLoginSchema = z.object({
+  usernameOrEmail: z
+    .string()
+    .min(1, "Email or Username is required")
+    .trim()
+    .refine(
+      (val) => emailRegex.test(val) || /^[a-z][a-z0-9._]{2,29}$/.test(val),
+      "Must be a valid email or username"
+    ),
+  password: z
+    .string()
+    .min(8, "Password must be at least 8 characters")
+    .max(50, "Password too long"),
+});
+
 export const registerValidation = validationInput(registerSchema);
-export const registerValidation2 = validationInput(verifyRegistrationSchema);
+export const authVerify = validationInput(verifyAuthSchema);
+
+export const loginValidate = validationInput(userLoginSchema);

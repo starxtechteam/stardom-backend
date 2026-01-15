@@ -13,8 +13,8 @@ interface SendOtpEmailProps {
   otp: string;
 }
 
-export async function sendOtpEmail({ email, otp }: SendOtpEmailProps): Promise<boolean> {
-  const templatePath = path.join(__dirname, "../templates/otp.ejs");
+export async function sendLoginOtp({ email, otp }: SendOtpEmailProps): Promise<boolean> {
+  const templatePath = path.join(__dirname, "../templates/loginotp.ejs");
 
   // Render EJS template
   const html: string = await ejs.renderFile(templatePath, {
