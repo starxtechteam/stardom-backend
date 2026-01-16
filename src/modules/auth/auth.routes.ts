@@ -2,8 +2,10 @@ import express from "express";
 import {
   registerStep1,
   registerStep2,
-  loginStep1,
-  loginStep2,
+  login,
+  loginOTPVerify,
+  enableOTPbasedLogin,
+  verify2FAOTP
 } from "./auth.controller.js";
 import {
   registerValidation,
@@ -16,7 +18,10 @@ const router = express.Router();
 
 router.post("/register/otp", authRateLimit, registerValidation, registerStep1);
 router.post("/register/verify", authVerify, registerStep2);
-router.post("/login/otp", loginValidate, loginStep1);
-router.post("/login/verify", authVerify, loginStep2);
+router.post("/login", loginValidate, login);
+router.post("/login/otp-verify", authVerify, loginOTPVerify);
+
+router.post("/login/2fa/otp/:id", enableOTPbasedLogin);
+router.post("/login/2fa/verify/:token", verify2FAOTP);
 
 export default router;

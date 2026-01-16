@@ -11,6 +11,8 @@ import {
 import { sendOtpEmail } from "../../mails/auth/registerOtp.mails.ts";
 import { sendWelcomeEmail } from "../../mails/user/welcome.mails.ts";
 import { sendLoginOtp } from "../../mails/auth/loginOtp.mails.ts";
+import { sendEnable2FAOtpEmail } from "../../mails/user/sendEnable2FAOtpEmail.ts";
+import { sendEnable2FAEmail } from "../../mails/user/sendEnable2FAEmail.ts";
 import {
   generateOTP,
   verifyOTP,
@@ -26,6 +28,7 @@ import {
   signRefreshToken,
   hashValue,
   invalidateOtp,
+  actualLogin,
 } from "./auth.service.ts";
 import type { LoginAttempts } from "../../types/auth.types.ts";
 
@@ -75,8 +78,8 @@ export const registerStep1 = asyncHandler(
       EX: EXPIRES_IN,
     });
 
-    if(!(sendOtpEmail({ email, otp }))){
-      throw new ApiError(400, "Something went wrong. Please try again later")
+    if (!sendOtpEmail({ email, otp })) {
+      throw new ApiError(400, "Something went wrong. Please try again later");
     }
 
     await prisma.tokenHash.create({
@@ -170,7 +173,7 @@ export const registerStep2 = asyncHandler(
   }
 );
 
-export const loginStep1 = asyncHandler(
+export const login = asyncHandler(
   async (
     req: Request<{}, {}, { usernameOrEmail: string; password: string }>,
     res: Response
@@ -180,9 +183,11 @@ export const loginStep1 = asyncHandler(
     usernameOrEmail = usernameOrEmail.trim().toLowerCase();
     password = password.trim();
 
-    const lastCache = await redisClient.get(REDIS_KEYS.identifierHash(hashValue(usernameOrEmail)));
-    if(lastCache){
-      throw new ApiError(400, "Please try again later.")
+    const lastCache = await redisClient.get(
+      REDIS_KEYS.identifierHash(hashValue(usernameOrEmail))
+    );
+    if (lastCache) {
+      throw new ApiError(400, "Please try again later.");
     }
 
     const ip = getClientIp(req);
@@ -192,7 +197,7 @@ export const loginStep1 = asyncHandler(
       identifier: usernameOrEmail,
       ipAddress: ip,
       deviceName: device.deviceName,
-      devicetype: device.deviceType,
+      deviceType: device.deviceType,
       os: device.os,
       browser: device.browser,
       success: false,
@@ -234,6 +239,25 @@ export const loginStep1 = asyncHandler(
       throw new ApiError(429, "Logged in too many device");
     }
 
+    const Enabled2FA = await prisma.userTotp.findFirst({
+      where: { userId: user.id },
+    });
+
+    if (!Enabled2FA || !Enabled2FA.enabled) {
+      const { accessToken, refreshToken } = await actualLogin(
+        user.id,
+        usernameOrEmail,
+        device,
+        ip
+      );
+
+      return res.status(200).json({
+        success: true,
+        accessToken: accessToken,
+        refreshToken: refreshToken,
+      });
+    }
+
     const { otp, otpHash } = generateOTP();
     const { token, tokenHash } = generateToken();
 
@@ -253,11 +277,15 @@ export const loginStep1 = asyncHandler(
       EX: AUTH_OTP.EXPIRES_IN,
     });
 
-    if(!(await sendLoginOtp({ email: user.email, otp }))){
+    if (!(await sendLoginOtp({ email: user.email, otp }))) {
       throw new ApiError(400, "Something went wrong. Please try again later");
     }
 
-    await redisClient.set(REDIS_KEYS.identifierHash(hashValue(usernameOrEmail)), "1", {EX: AUTH_OTP.EXPIRES_IN} );
+    await redisClient.set(
+      REDIS_KEYS.identifierHash(hashValue(usernameOrEmail)),
+      "1",
+      { EX: AUTH_OTP.EXPIRES_IN }
+    );
     await saveLoginAttempts({ ...attempt, success: true, message: "OTP sent" });
 
     res.status(200).json({
@@ -267,7 +295,7 @@ export const loginStep1 = asyncHandler(
   }
 );
 
-export const loginStep2 = asyncHandler(async (req, res) => {
+export const loginOTPVerify = asyncHandler(async (req, res) => {
   const { token, otp } = req.body;
 
   const ip = getClientIp(req);
@@ -320,39 +348,170 @@ export const loginStep2 = asyncHandler(async (req, res) => {
     throw new ApiError(403, "Inactive or invalid user");
   }
 
-  const access = signAccessToken({ id: user.id, role: "user" });
-  const refresh = signRefreshToken({ id: user.id, role: "user" });
-
-  await prisma.userSession.create({
-    data: {
-      userId: user.id,
-      refreshTokenHash: refresh.hash,
-      deviceName: device.deviceName,
-      ipAddress: ip,
-      userAgent: device.deviceType,
-      expiresAt: new Date(Date.now() + AUTH_OTP.SESSION_EXPIRE_IN * 86400000),
-    },
-  });
-
   await Promise.all([
     prisma.tokenHash.delete({ where: { id: dbToken.id } }),
     invalidateOtp(tokenHash),
   ]);
 
-  await saveLoginAttempts({
+  const { accessToken, refreshToken } = await actualLogin(
+    user.id,
     identifier,
-    ipAddress: ip,
-    deviceName: device.deviceName,
-    devicetype: device.deviceType,
-    os: device.os,
-    browser: device.browser,
+    device,
+    ip
+  );
+
+  res.status(200).json({
     success: true,
-    message: "Login successful",
+    accessToken: accessToken,
+    refreshToken: refreshToken,
+  });
+});
+
+export const enableOTPbasedLogin = asyncHandler(async (req, res) => {
+  const { id: userId } = req.params;
+
+  if (!userId) {
+    throw new ApiError(400, "Invalid userId");
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+  });
+
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  if (user.status !== "active") {
+    throw new ApiError(403, `Account ${user.status}`);
+  }
+
+  const alreadyEnabled = await prisma.userTotp.findFirst({
+    where: { userId, enabled: true },
+  });
+
+  if (alreadyEnabled) {
+    throw new ApiError(409, "OTP-based login already enabled");
+  }
+
+  const { otp, otpHash } = generateOTP();
+  const { token, tokenHash } = generateToken();
+
+  const ip = getClientIp(req);
+
+  await prisma.$transaction([
+    prisma.userTotp.upsert({
+      where: { userId },
+      update: { secret: tokenHash },
+      create: {
+        userId,
+        secret: tokenHash,
+        enabled: false,
+      },
+    }),
+
+    prisma.userOtp.create({
+      data: {
+        userId,
+        purpose: "ENABLE_2FA",
+        codeHash: otpHash,
+        expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+      },
+    }),
+
+    prisma.tokenHash.create({
+      data: {
+        token: token,
+        tokenHash,
+        userIp: ip,
+        expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+      },
+    }),
+  ]);
+
+  const emailSent = await sendEnable2FAOtpEmail({
+    email: user.email,
+    otp,
+  });
+
+  if (!emailSent) {
+    throw new ApiError(500, "Failed to send OTP email");
+  }
+
+  res.status(200).json({
+    success: true,
+    message: "OTP sent successfully",
+    token,
+  });
+});
+
+export const verify2FAOTP = asyncHandler(async (req, res) => {
+  const { token } = req.params;
+  const { otp } = req.body;
+
+  if (!token || !otp) {
+    throw new ApiError(400, "Token and OTP are required");
+  }
+
+  const ip = getClientIp(req);
+  const device = getDeviceInfo(req);
+
+  const tokenEntry = await prisma.tokenHash.findFirst({
+    where: {
+      tokenHash: hashValue(token),
+      userIp: ip,
+      expiresAt: { gt: new Date() },
+    },
+  });
+
+  if (!tokenEntry) {
+    throw new ApiError(400, "Invalid or expired token");
+  }
+
+  const userOTP = await prisma.userOtp.findFirst({
+    where: {
+      purpose: "ENABLE_2FA",
+      expiresAt: { gt: new Date() },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  if (!userOTP) {
+    throw new ApiError(400, "Invalid or expired OTP");
+  }
+
+  const isValidOtp = verifyOTP(otp, userOTP.codeHash);
+
+  if (!isValidOtp) {
+    throw new ApiError(400, "Invalid or expired OTP");
+  }
+
+  await prisma.$transaction([
+    prisma.userTotp.update({
+      where: { userId: userOTP.userId },
+      data: {
+        enabled: true,
+        verifiedAt: new Date(),
+      },
+    }),
+
+    prisma.userOtp.deleteMany({
+      where: { userId: userOTP.userId },
+    }),
+
+    prisma.tokenHash.deleteMany({
+      where: { tokenHash: tokenEntry.tokenHash },
+    }),
+  ]);
+
+  await sendEnable2FAEmail({
+    email: (await prisma.user.findUnique({ where: { id: userOTP.userId } }))!
+      .email,
+    device: device.deviceName || device.deviceType,
   });
 
   res.status(200).json({
     success: true,
-    accessToken: access.token,
-    refreshToken: refresh.token,
+    message: "OTP-based login enabled successfully",
   });
 });

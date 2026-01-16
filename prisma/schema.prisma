@@ -112,6 +112,7 @@ model TokenHash {
   tokenHash String
   userIp String?
   createdAt DateTime @default(now())
+  expiresAt DateTime?
 }
 
 // =====================================================
@@ -170,7 +171,7 @@ model LoginAttempt {
   identifier String
   ipAddress  String
   deviceName String
-  devicetype String
+  deviceType String
   os         String
   browser    String
   success    Boolean
