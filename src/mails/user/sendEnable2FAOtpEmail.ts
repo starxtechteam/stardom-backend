@@ -1,34 +1,37 @@
 import ejs from "ejs";
 import path from "path";
 import { fileURLToPath } from "url";
-import sendEmail from "../../utils/mailSender.js"; 
+import sendEmail from "../../utils/mailSender.ts";
 import { ENV } from "../../config/env.ts";
-import { AUTH_OTP } from "../../constants/auth.constants.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-interface SendOtpEmailProps {
+interface Enable2FAOtpEmailPayload {
   email: string;
   otp: string;
 }
 
-export async function sendOtpEmail({ email, otp }: SendOtpEmailProps): Promise<boolean> {
-  const templatePath = path.join(__dirname, "../templates/otp.ejs");
+export async function sendEnable2FAOtpEmail({
+  email,
+  otp
+}: Enable2FAOtpEmailPayload): Promise<boolean> {
+  const templatePath = path.join(
+    __dirname,
+    "../templates/enable-2fa-otp.ejs"
+  );
 
-  // Render EJS template
-  const html: string = await ejs.renderFile(templatePath, {
+  const html = await ejs.renderFile(templatePath, {
     appName: ENV.APP_NAME,
     otp,
-    expiresIn: AUTH_OTP.EXPIRES_IN / 60,
+    expiresIn: 5,
     year: new Date().getFullYear(),
   });
 
-  // Send email
   const result = await sendEmail(
     email,
-    "Your OTP Code",
-    html
+    "Your OTP to Enable Two-Factor Authentication",
+    html,
   );
 
   if (!result.success) {

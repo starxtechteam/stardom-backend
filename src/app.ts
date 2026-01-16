@@ -31,7 +31,7 @@ const globalRateLimit = rateLimit({
   legacyHeaders: false,
 });
 
-app.set("trust proxy", true);
+// app.set("trust proxy", true);
 app.use(globalRateLimit);
 
 app.use(compression());
