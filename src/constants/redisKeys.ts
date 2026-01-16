@@ -2,6 +2,8 @@ export const REDIS_KEYS = {
   blacklistToken: (token: string) => `users:blacklist:${token}`,
   userTemp: (hash: string) => `users:temp:${hash}`,
   registerOtp: (token: string) => `register:otp:${token}`,
+  resendRegisterOTP: (token: string) => `register:resend:${token}`,
+  
   loginOtp: (token: string) => `login:otp:${token}`,
   usernameTemp: (username: string) => `temp:username:${username}`,
   isotp: (token: string) =>  `otp:genarate:${token}`,

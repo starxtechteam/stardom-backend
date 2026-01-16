@@ -2,6 +2,7 @@ import express from "express";
 import {
   registerStep1,
   registerStep2,
+  resendRegisterOTP,
   login,
   loginOTPVerify,
   enableOTPbasedLogin,
@@ -18,6 +19,7 @@ const router = express.Router();
 
 router.post("/register/otp", authRateLimit, registerValidation, registerStep1);
 router.post("/register/verify", authVerify, registerStep2);
+router.post("/register/otp/resend/:token", resendRegisterOTP);
 router.post("/login", loginValidate, login);
 router.post("/login/otp-verify", authVerify, loginOTPVerify);
 

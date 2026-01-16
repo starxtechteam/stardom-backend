@@ -173,6 +173,74 @@ export const registerStep2 = asyncHandler(
   }
 );
 
+export const resendRegisterOTP = asyncHandler(async (req, res) => {
+  const { token } = req.params;
+
+  const resendAttempt = await redisClient.incr(REDIS_KEYS.resendRegisterOTP(token));
+  if(resendAttempt >= 5){
+    throw new ApiError(429, "Too many requests");
+  }
+
+  const ip = getClientIp(req);
+
+  const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+  const tokenhash = await prisma.tokenHash.findFirst({
+    where: {
+      AND: [{ token: token }, { createdAt: { gte: fiveMinutesAgo } }],
+    },
+  });
+
+  if (!tokenhash) {
+    throw new ApiError(400, "OTP expired or invalid");
+  }
+
+  if (tokenhash.userIp !== ip) {
+    throw new ApiError(403, "Inavild Request");
+  }
+
+  const matchToken = verifyToken(token, tokenhash.tokenHash);
+  if (!matchToken) {
+    throw new ApiError(400, "OTP expired or invalid");
+  }
+
+  const userData = await redisClient.get(
+    REDIS_KEYS.userTemp(tokenhash.tokenHash)
+  );
+  if (!userData) {
+    throw new ApiError(400, "OTP expired or invalid");
+  }
+
+  const otpHashed: string | null = await redisClient.get(
+    REDIS_KEYS.registerOtp(token)
+  );
+  if (!otpHashed) {
+    throw new ApiError(400, "OTP expired or invalid");
+  }
+
+  const user = await JSON.parse(userData);
+  const { otp, otpHash } = generateOTP();
+  const EXPIRES_IN = AUTH_OTP.EXPIRES_IN;
+  await redisClient.set(REDIS_KEYS.registerOtp(token), otpHash, {
+    EX: EXPIRES_IN,
+  });
+  await redisClient.set(REDIS_KEYS.userTemp(tokenhash.tokenHash), userData, {
+    EX: EXPIRES_IN,
+  });
+  await redisClient.set(REDIS_KEYS.usernameTemp(user.username), user.username, {
+    EX: EXPIRES_IN,
+  });
+
+  if (!await sendOtpEmail({ email: user.email, otp })) {
+    throw new ApiError(400, "Something went wrong. Please try again later");
+  }
+
+  res.status(200).json({
+    success: true,
+    message: "OTP Resend Successfully"
+  });
+
+});
+
 export const login = asyncHandler(
   async (
     req: Request<{}, {}, { usernameOrEmail: string; password: string }>,
