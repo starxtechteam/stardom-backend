@@ -64,3 +64,5 @@ export const authVerify = validationInput(verifyAuthSchema);
 export const loginValidate = validationInput(userLoginSchema);
 export const verify2FAValidate = validationInput(verify2FASchema);
 export const tokenValidate = validationInput(tokenSchema, "params");
+
+export const refreshTokenValidate = validationInput(tokenSchema);
