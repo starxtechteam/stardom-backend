@@ -1,7 +1,4 @@
-import jwt, {
-  JsonWebTokenError,
-  TokenExpiredError,
-} from "jsonwebtoken";
+import jwt from "jsonwebtoken";
 import type { Request, Response, NextFunction } from "express";
 import type { JwtPayload as JwtLibPayload } from "jsonwebtoken";
 
@@ -29,24 +26,24 @@ export const verifyToken = asyncHandler(
 
     const token = authHeader.split(" ")[1];
 
-    const isBlacklisted = await redisClient.get(REDIS_KEYS.blacklistToken(token));
+    const isBlacklisted = await redisClient.get(
+      REDIS_KEYS.blacklistToken(token)
+    );
     if (isBlacklisted) {
-        throw new ApiError(401, "Token revoked");
+      throw new ApiError(401, "Token revoked");
     }
 
     let decoded: JwtPayload;
 
     try {
-      decoded = jwt.verify(
-        token,
-        ENV.JWT_ACCESS_SECRET
-      ) as JwtLibPayload & JwtPayload;
+      decoded = jwt.verify(token, ENV.JWT_ACCESS_SECRET) as JwtLibPayload &
+        JwtPayload;
     } catch (err: unknown) {
       let msg = "Invalid token";
 
-      if (err instanceof TokenExpiredError) {
+      if (err instanceof jwt.TokenExpiredError) {
         msg = "Token expired";
-      } else if (err instanceof JsonWebTokenError) {
+      } else if (err instanceof jwt.JsonWebTokenError) {
         msg = "Invalid token";
       }
 
@@ -64,4 +61,4 @@ export const roleAuth = (...roles: Array<"user" | "admin">) =>
       throw new ApiError(403, "Forbidden");
     }
     next();
-});
+  });
