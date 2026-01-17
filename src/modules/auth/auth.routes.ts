@@ -7,7 +7,8 @@ import {
   loginOTPVerify,
   enableOTPbasedLogin,
   verify2FAOTP,
-  resendLoginOTP
+  resendLoginOTP,
+  refreshTokenHandler
 } from "./auth.controller.js";
 import {
   registerValidation,
@@ -15,6 +16,7 @@ import {
   loginValidate,
   tokenValidate,
   verify2FAValidate,
+  refreshTokenValidate
 } from "./auth.validation.ts";
 import { authRateLimit } from "../../middlewares/ratelimit.ts";
 
@@ -28,6 +30,7 @@ router.post("/register/otp/resend/:token", tokenValidate, resendRegisterOTP);
 router.post("/login", loginValidate, login);
 router.post("/login/otp-verify", authVerify, loginOTPVerify);
 router.post("/login/otp/resend/:token", tokenValidate, resendLoginOTP);
+router.post("/refresh-token", refreshTokenValidate, refreshTokenHandler);
 
 router.use(verifyToken, roleAuth("user"))
 router.post("/login/2fa/otp", enableOTPbasedLogin);

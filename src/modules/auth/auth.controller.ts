@@ -24,8 +24,12 @@ import {
   actualLogin,
   invalidateOtp,
   hashValue,
+  verifyRefreshToken,
+  signRefreshToken,
+  signAccessToken
 } from "./auth.service.ts";
 import type { LoginAttempts } from "../../types/auth.types.ts";
+import { ENV } from "../../config/env.ts";
 
 export const registerStep1 = asyncHandler(
   async (
@@ -605,3 +609,68 @@ export const verify2FAOTP = asyncHandler(async (req, res) => {
     message: "OTP-based login enabled successfully",
   });
 });
+
+export const refreshTokenHandler = asyncHandler(async (req, res) => {
+  const { token: refreshToken } = req.body;
+  const ip = getClientIp(req);
+
+  if (!refreshToken) {
+    throw new ApiError(401, "Refresh token required");
+  }
+
+  let payload;
+  try {
+    payload = verifyRefreshToken(refreshToken);
+  } catch {
+    throw new ApiError(401, "Invalid refresh token");
+  }
+
+  const refreshHash = hashValue(refreshToken);
+
+  const session = await prisma.userSession.findFirst({
+    where: {
+      refreshTokenHash: refreshHash,
+      expiresAt: { gt: new Date() },
+    },
+    include: {
+      user: {
+        select: { id: true, status: true, email: true },
+      },
+    },
+  });
+
+  if (!session || session.ipAddress !== ip) {
+    throw new ApiError(401, "Session expired or invalid");
+  }
+
+  if (session.user.status !== "active") {
+    throw new ApiError(403, `Account ${session.user.status}`);
+  }
+
+  /** ROTATE refresh token (BEST PRACTICE) */
+  const {token: newRefreshToken, hash: newRefreshHash} = signRefreshToken({ id: session.userId, role: "user" });
+
+  await prisma.$transaction([
+    prisma.userSession.update({
+      where: { id: session.id },
+      data: {
+        refreshTokenHash: newRefreshHash,
+        expiresAt: new Date(
+          Date.now() + 10 * 24 * 60 * 60 * 1000
+        ),
+      },
+    }),
+  ]);
+
+  const newAccessToken = signAccessToken({
+    id: session.userId,
+    role: "user",
+  });
+
+  res.status(200).json({
+    success: true,
+    accessToken: newAccessToken.token,
+    refreshToken: newRefreshToken,
+  });
+});
+
