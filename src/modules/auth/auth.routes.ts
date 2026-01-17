@@ -13,6 +13,8 @@ import {
   registerValidation,
   authVerify,
   loginValidate,
+  tokenValidate,
+  verify2FAValidate,
 } from "./auth.validation.ts";
 import { authRateLimit } from "../../middlewares/ratelimit.ts";
 
@@ -22,13 +24,13 @@ const router = express.Router();
 
 router.post("/register/otp", authRateLimit, registerValidation, registerStep1);
 router.post("/register/verify", authVerify, registerStep2);
-router.post("/register/otp/resend/:token", resendRegisterOTP);
+router.post("/register/otp/resend/:token", tokenValidate, resendRegisterOTP);
 router.post("/login", loginValidate, login);
 router.post("/login/otp-verify", authVerify, loginOTPVerify);
-router.post("/login/otp/resend/:token", resendLoginOTP);
+router.post("/login/otp/resend/:token", tokenValidate, resendLoginOTP);
 
 router.use(verifyToken, roleAuth("user"))
 router.post("/login/2fa/otp", enableOTPbasedLogin);
-router.post("/login/2fa/verify/:token", verify2FAOTP);
+router.post("/login/2fa/verify/:token", tokenValidate, verify2FAValidate, verify2FAOTP);
 
 export default router;
