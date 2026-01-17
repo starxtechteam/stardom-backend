@@ -103,6 +103,8 @@ model User {
   followers Follow[] @relation("Followers")
   following Follow[] @relation("Following")
 
+  tokenHashes TokenHash[]
+
   @@index([id], map: "idx_active_users")
 }
 
@@ -111,6 +113,10 @@ model TokenHash {
   token     String
   tokenHash String
   userIp String?
+  
+  userId String? @db.Uuid
+  user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
   createdAt DateTime @default(now())
   expiresAt DateTime?
 }

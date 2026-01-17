@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { validationInput } from  "../../utils/validation.ts";
+import { validationInput } from "../../utils/validation.ts";
 
 const usernameSchema = z.object({
   username: z
@@ -12,20 +12,20 @@ const usernameSchema = z.object({
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const registerSchema = usernameSchema.extend({
-    email: z.email('Email is required').toLowerCase().trim(),
-    password: z
-      .string("Password is required")
-      .min(8, "Password must be at least 8 characters long")
-      .regex(
-        /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/,
-        "Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character"
-      ),
-    confirmPassword: z
-      .string("Password confirmation is required")
-      .min(1, "Password confirmation is required"),
+  email: z.email('Email is required').toLowerCase().trim(),
+  password: z
+    .string("Password is required")
+    .min(8, "Password must be at least 8 characters long")
+    .regex(
+      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/,
+      "Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character"
+    ),
+  confirmPassword: z
+    .string("Password confirmation is required")
+    .min(1, "Password confirmation is required"),
 }).refine((data) => data.password === data.confirmPassword, {
-    message: "Passwords do not match",
-    path: ["confirmPassword"],
+  message: "Passwords do not match",
+  path: ["confirmPassword"],
 });
 
 const verifyAuthSchema = z.object({
@@ -41,14 +41,26 @@ const userLoginSchema = z.object({
     .refine(
       (val) => emailRegex.test(val) || /^[a-z][a-z0-9._]{2,29}$/.test(val),
       "Must be a valid email or username"
-    ),
+    )
+    .transform((val) => val.toLowerCase()),
   password: z
     .string()
+    .trim()
     .min(8, "Password must be at least 8 characters")
     .max(50, "Password too long"),
+});
+
+const verify2FASchema = z.object({
+  otp: z.string({ message: 'OTP is required' }).length(6, 'Invalid OTP'),
+});
+
+const tokenSchema = z.object({
+  token: z.string({ message: "Token is required" }).min(1, "Invalid Token"),
 });
 
 export const registerValidation = validationInput(registerSchema);
 export const authVerify = validationInput(verifyAuthSchema);
 
 export const loginValidate = validationInput(userLoginSchema);
+export const verify2FAValidate = validationInput(verify2FASchema);
+export const tokenValidate = validationInput(tokenSchema, "params");
