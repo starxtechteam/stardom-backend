@@ -176,8 +176,10 @@ export const registerStep2 = asyncHandler(
 export const resendRegisterOTP = asyncHandler(async (req, res) => {
   const { token } = req.params;
 
-  const resendAttempt = await redisClient.incr(REDIS_KEYS.resendRegisterOTP(token));
-  if(resendAttempt >= 5){
+  const resendAttempt = await redisClient.incr(
+    REDIS_KEYS.resendRegisterOTP(token)
+  );
+  if (resendAttempt >= 5) {
     throw new ApiError(429, "Too many requests");
   }
 
@@ -230,15 +232,14 @@ export const resendRegisterOTP = asyncHandler(async (req, res) => {
     EX: EXPIRES_IN,
   });
 
-  if (!await sendOtpEmail({ email: user.email, otp })) {
+  if (!(await sendOtpEmail({ email: user.email, otp }))) {
     throw new ApiError(400, "Something went wrong. Please try again later");
   }
 
   res.status(200).json({
     success: true,
-    message: "OTP Resend Successfully"
+    message: "OTP Resend Successfully",
   });
-
 });
 
 export const login = asyncHandler(
@@ -435,8 +436,61 @@ export const loginOTPVerify = asyncHandler(async (req, res) => {
   });
 });
 
+export const resendLoginOTP = asyncHandler(async (req, res) => {
+  const { token } = req.params;
+  const ip = getClientIp(req);
+
+  const tokenHash = hashValue(token);
+  const dbToken = await prisma.tokenHash.findFirst({
+    where: {
+      tokenHash,
+      createdAt: { gte: new Date(Date.now() - 10 * 60 * 1000) },
+    },
+  });
+  if (!dbToken) {
+    throw new ApiError(400, "Invaild token");
+  }
+  if (dbToken.userIp !== ip) {
+    throw new ApiError(403, "Invaild request");
+  }
+
+  const storedOtpHash = await redisClient.get(REDIS_KEYS.loginOtp(tokenHash));
+  if (!storedOtpHash) {
+    throw new ApiError(400, "Invaild token");
+  }
+
+  const { otp, otpHash } = generateOTP();
+  await redisClient.set(REDIS_KEYS.loginOtp(tokenHash), otpHash, {
+    EX: AUTH_OTP.EXPIRES_IN,
+  });
+
+  const identifier = await redisClient.get(REDIS_KEYS.identifier(tokenHash));
+  if (!identifier) {
+    throw new ApiError(400, "OTP expired");
+  }
+
+  const user = await prisma.user.findFirst({
+    where: {
+      OR: [{ username: identifier }, { email: identifier }],
+    },
+  });
+
+  if (!user || user.status !== "active") {
+    throw new ApiError(403, "Inactive or invalid user");
+  }
+
+  if (!(await sendLoginOtp({ email: user.email, otp }))) {
+    throw new ApiError(400, "Something went wrong. Please try again later");
+  }
+
+  return res.status(200).json({
+    success: true,
+    messgae:"OTP Resend Successfully"
+  })
+});
+
 export const enableOTPbasedLogin = asyncHandler(async (req, res) => {
-  const { id: userId } = req.params;
+  const userId = req.user?.id;
 
   if (!userId) {
     throw new ApiError(400, "Invalid userId");
