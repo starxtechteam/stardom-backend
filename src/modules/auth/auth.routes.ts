@@ -16,6 +16,8 @@ import {
 } from "./auth.validation.ts";
 import { authRateLimit } from "../../middlewares/ratelimit.ts";
 
+import { verifyToken, roleAuth } from "../../middlewares/auth.ts";
+
 const router = express.Router();
 
 router.post("/register/otp", authRateLimit, registerValidation, registerStep1);
@@ -25,7 +27,8 @@ router.post("/login", loginValidate, login);
 router.post("/login/otp-verify", authVerify, loginOTPVerify);
 router.post("/login/otp/resend/:token", resendLoginOTP);
 
-router.post("/login/2fa/otp/:id", enableOTPbasedLogin);
+router.use(verifyToken, roleAuth("user"))
+router.post("/login/2fa/otp", enableOTPbasedLogin);
 router.post("/login/2fa/verify/:token", verify2FAOTP);
 
 export default router;

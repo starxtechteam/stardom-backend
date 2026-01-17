@@ -490,7 +490,7 @@ export const resendLoginOTP = asyncHandler(async (req, res) => {
 });
 
 export const enableOTPbasedLogin = asyncHandler(async (req, res) => {
-  const { id: userId } = req.params;
+  const userId = req.user?.id;
 
   if (!userId) {
     throw new ApiError(400, "Invalid userId");
