@@ -34,7 +34,7 @@ export const verifyToken = asyncHandler(
 
     // 🔐 Blacklist check (logout / forced revoke)
     const isBlacklisted = await redisClient.get(
-      REDIS_KEYS.blacklistToken(token)
+      REDIS_KEYS.blacklistToken(token),
     );
     if (isBlacklisted) {
       throw new ApiError(401, "Unauthorized");
@@ -78,7 +78,7 @@ export const verifyToken = asyncHandler(
     if (!ip || userSession.ipAddress !== ip) {
       throw new ApiError(
         401,
-        "Session validation failed. Please log in again."
+        "Session validation failed. Please log in again.",
       );
     }
 
@@ -93,9 +93,8 @@ export const verifyToken = asyncHandler(
 
     req.session = authSession;
     next();
-  }
+  },
 );
-
 
 export const roleAuth = (...roles: Array<"user" | "admin">) =>
   asyncHandler(async (req: Request, _res: Response, next: NextFunction) => {
