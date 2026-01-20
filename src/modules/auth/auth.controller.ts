@@ -159,6 +159,12 @@ export const registerStep2 = asyncHandler(
       },
     });
 
+    const userprofile = await prisma.userProfile.create({
+      data: {
+        userId: newUser.id
+      }
+    })
+
     const { password: _, ...userWithoutPassword } = newUser;
 
     await Promise.all([
@@ -299,11 +305,6 @@ export const login = asyncHandler(
         device,
         ip,
       );
-      await saveLoginAttempts({
-        ...attempt,
-        success: true,
-        message: "Logged in succesfully without otp",
-      });
 
       return res.status(200).json({
         success: true,
@@ -674,7 +675,7 @@ export const refreshTokenHandler = asyncHandler(async (req, res) => {
     },
   });
 
-  if (!session || session.ipAddress !== ip) {
+  if (!session) {
     throw new ApiError(401, "Session expired or invalid");
   }
 
@@ -692,6 +693,7 @@ export const refreshTokenHandler = asyncHandler(async (req, res) => {
     prisma.userSession.update({
       where: { id: session.id },
       data: {
+        ipAddress: ip,
         refreshTokenHash: newRefreshHash,
         previousTokenHash: refreshToken,
         expiresAt: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000),

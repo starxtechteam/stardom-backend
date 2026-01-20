@@ -12,6 +12,9 @@ export const REDIS_KEYS = {
   identifierHash: (userHash: string) => `users:hash:${userHash}`,
 
   resetPassword: (token: string) => `reset:passsword:${token}`,
+
+  // user data cache
+  userdata: (userId: string) => `user:profile:${userId}`,
 };
 
 export const REG_IP_KEY = (ip: string) => `register:ip:${ip}`;
