@@ -57,4 +57,43 @@ const updateProfileSchema = usernameSchema.extend({
     .optional(),
 });
 
+const urlWithDomain = (domains: string[], message: string) =>
+  z
+    .url({ message })
+    .refine((url) => {
+      try {
+        const hostname = new URL(url).hostname.replace(/^www\./, "");
+        return domains.includes(hostname);
+      } catch {
+        return false;
+      }
+    }, { message });
+
+export const updateSocialSchema = z.object({
+  websiteUrl: z
+    .url({ message: "Website URL must be a valid URL." })
+    .optional(),
+
+  socialTwitter: urlWithDomain(
+    ["twitter.com", "x.com"],
+    "Twitter URL must be from twitter.com or x.com"
+  ).optional(),
+
+  socialFacebook: urlWithDomain(
+    ["facebook.com", "www.facebook.com"],
+    "Facebook URL must be from facebook.com"
+  ).optional(),
+
+  socialLinkedin: urlWithDomain(
+    ["linkedin.com", "www.linkedin.com"],
+    "LinkedIn URL must be from linkedin.com"
+  ).optional(),
+
+  socialInstagram: urlWithDomain(
+    ["instagram.com", "www.instagram.com"],
+    "Instagram URL must be from instagram.com"
+  ).optional(),
+});
+
 export const updateProfileValidation = validationInput(updateProfileSchema);
+export const updateSocialValidation = validationInput(updateSocialSchema);

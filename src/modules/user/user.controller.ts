@@ -153,3 +153,49 @@ export const userProfileUpdate = asyncHandler(async (req, res) => {
     data: user,
   });
 });
+
+export const updateSocialMedia = asyncHandler(async (req, res) => {
+  const {
+    websiteUrl,
+    socialTwitter,
+    socialFacebook,
+    socialLinkedin,
+    socialInstagram,
+  } = req.body;
+
+  const userId = req.session?.userId;
+
+  if(!websiteUrl && !socialTwitter && !socialFacebook && !socialLinkedin && !socialInstagram){
+    throw new ApiError(400, "No social media fields provided for update");
+  }
+
+  if (!userId) {
+    throw new ApiError(401, "Unauthorized");
+  }
+
+  await prisma.userProfile.upsert({
+    where: { userId },
+    update: {
+      ...(websiteUrl && { websiteUrl }),
+      ...(socialTwitter && { socialTwitter }),
+      ...(socialFacebook && { socialFacebook }),
+      ...(socialLinkedin && { socialLinkedin }),
+      ...(socialInstagram && { socialInstagram }),
+    },
+    create: {
+      userId,
+      ...(websiteUrl && { websiteUrl }),
+      ...(socialTwitter && { socialTwitter }),
+      ...(socialFacebook && { socialFacebook }),
+      ...(socialLinkedin && { socialLinkedin }),
+      ...(socialInstagram && { socialInstagram }),
+    },
+  });
+
+  await redisClient.del(REDIS_KEYS.userdata(userId));
+
+  return res.status(200).json({
+    success: true,
+    message: "User social media links updated successfully",
+  });
+});
