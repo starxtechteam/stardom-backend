@@ -11,3 +11,12 @@ export type LoginAttempts = DeviceInfo & {
   success: boolean;
   message: string;
 };
+
+export type AuthSession = {
+  id: string,
+  userId: string,
+  deviceName: string | null,
+  ipAddress: string | null,
+  userAgent: string | null,
+  role: "user" | "admin"
+}
