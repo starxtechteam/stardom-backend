@@ -4,12 +4,16 @@ import { ApiError } from "../../utils/api-error.js";
 import { prisma } from "../../config/prisma.config.ts";
 import { redisClient, REDIS_KEYS } from "../../config/redis.config.ts";
 import bcrypt from "bcryptjs";
-import { AUTH_OTP, MAXIMUM_LOGGEDIN_DEVICE } from "../../constants/auth.constants.ts";
+import {
+  AUTH_OTP,
+  MAXIMUM_LOGGEDIN_DEVICE,
+} from "../../constants/auth.constants.ts";
 import { sendOtpEmail } from "../../mails/auth/registerOtp.mails.ts";
 import { sendWelcomeEmail } from "../../mails/user/welcome.mails.ts";
 import { sendLoginOtp } from "../../mails/auth/loginOtp.mails.ts";
 import { sendEnable2FAOtpEmail } from "../../mails/user/sendEnable2FAOtpEmail.ts";
 import { sendEnable2FAEmail } from "../../mails/user/sendEnable2FAEmail.ts";
+import { resetPasswordOtp } from "../../mails/auth/resetPasswordOTP.ts";
 import {
   generateOTP,
   verifyOTP,
@@ -26,15 +30,14 @@ import {
   hashValue,
   verifyRefreshToken,
   signRefreshToken,
-  signAccessToken
+  signAccessToken,
 } from "./auth.service.ts";
 import type { LoginAttempts } from "../../types/auth.types.ts";
-import { ENV } from "../../config/env.ts";
 
 export const registerStep1 = asyncHandler(
   async (
     req: Request<{}, {}, { username: string; email: string; password: string }>,
-    res: Response
+    res: Response,
   ) => {
     const { username, email, password } = req.body;
     const ip = getClientIp(req);
@@ -42,7 +45,8 @@ export const registerStep1 = asyncHandler(
     const registerAttemptKey = `rate_limit:register:${ip}`;
     const attempts = await redisClient.incr(registerAttemptKey);
     if (attempts === 1) await redisClient.expire(registerAttemptKey, 3600); // 1 hour
-    if (attempts > 10) throw new ApiError(429, "Too many registration attempts");
+    if (attempts > 10)
+      throw new ApiError(429, "Too many registration attempts");
 
     const existingUser = await prisma.user.findFirst({
       where: { OR: [{ username }, { email }] },
@@ -64,7 +68,7 @@ export const registerStep1 = asyncHandler(
       redisClient.set(
         REDIS_KEYS.userTemp(tokenHash),
         JSON.stringify(userPayload),
-        { EX: EXPIRES_IN }
+        { EX: EXPIRES_IN },
       ),
       redisClient.set(REDIS_KEYS.registerOtp(token), otpHash, {
         EX: EXPIRES_IN,
@@ -85,13 +89,13 @@ export const registerStep1 = asyncHandler(
       message: "OTP Sent Successfully",
       token,
     });
-  }
+  },
 );
 
 export const registerStep2 = asyncHandler(
   async (
     req: Request<{}, {}, { token: string; otp: string }>,
-    res: Response
+    res: Response,
   ) => {
     const { token, otp } = req.body;
     const ip = getClientIp(req);
@@ -103,7 +107,11 @@ export const registerStep2 = asyncHandler(
       },
     });
 
-    if (!tokenhash || tokenhash.userIp !== ip || !verifyToken(token, tokenhash.tokenHash)) {
+    if (
+      !tokenhash ||
+      tokenhash.userIp !== ip ||
+      !verifyToken(token, tokenhash.tokenHash)
+    ) {
       throw new ApiError(400, "OTP expired or invalid");
     }
 
@@ -117,7 +125,10 @@ export const registerStep2 = asyncHandler(
         redisClient.del(REDIS_KEYS.userTemp(tokenhash.tokenHash)),
         prisma.tokenHash.deleteMany({ where: { token } }),
       ]);
-      throw new ApiError(429, "Too many failed attempts. Please restart registration.");
+      throw new ApiError(
+        429,
+        "Too many failed attempts. Please restart registration.",
+      );
     }
 
     const [userData, otpHashed] = await Promise.all([
@@ -134,7 +145,7 @@ export const registerStep2 = asyncHandler(
     // Final check for collision before create (race condition handling)
     const collisionParams = {
       where: { OR: [{ username: user.username }, { email: user.email }] },
-      select: { id: true }
+      select: { id: true },
     };
     if (await prisma.user.findFirst(collisionParams as any)) {
       throw new ApiError(409, "User already registered");
@@ -163,7 +174,7 @@ export const registerStep2 = asyncHandler(
       message: "User Registered Successfully",
       user: userWithoutPassword,
     });
-  }
+  },
 );
 
 export const resendRegisterOTP = asyncHandler(async (req, res) => {
@@ -174,7 +185,8 @@ export const resendRegisterOTP = asyncHandler(async (req, res) => {
   const resendLimitKey = `rate_limit:resend_otp:${ip}`;
   const attempts = await redisClient.incr(resendLimitKey);
   if (attempts === 1) await redisClient.expire(resendLimitKey, 600); // 10 mins
-  if (attempts > 3) throw new ApiError(429, "Too many resend requests. Try again later.");
+  if (attempts > 3)
+    throw new ApiError(429, "Too many resend requests. Try again later.");
 
   const checkTime = new Date(Date.now() - AUTH_OTP.EXPIRES_IN * 1000);
   const tokenhash = await prisma.tokenHash.findFirst({
@@ -183,11 +195,17 @@ export const resendRegisterOTP = asyncHandler(async (req, res) => {
     },
   });
 
-  if (!tokenhash || tokenhash.userIp !== ip || !verifyToken(token, tokenhash.tokenHash)) {
+  if (
+    !tokenhash ||
+    tokenhash.userIp !== ip ||
+    !verifyToken(token, tokenhash.tokenHash)
+  ) {
     throw new ApiError(400, "OTP expired or invalid");
   }
 
-  const userData = await redisClient.get(REDIS_KEYS.userTemp(tokenhash.tokenHash));
+  const userData = await redisClient.get(
+    REDIS_KEYS.userTemp(tokenhash.tokenHash),
+  );
   if (!userData) {
     throw new ApiError(400, "Registration session expired");
   }
@@ -217,7 +235,7 @@ export const resendRegisterOTP = asyncHandler(async (req, res) => {
 export const login = asyncHandler(
   async (
     req: Request<{}, {}, { usernameOrEmail: string; password: string }>,
-    res: Response
+    res: Response,
   ) => {
     const { usernameOrEmail, password } = req.body;
     const ip = getClientIp(req);
@@ -257,18 +275,21 @@ export const login = asyncHandler(
     const sessionCount = await prisma.userSession.count({
       where: {
         userId: user.id,
-        expiresAt: { gt: new Date() } // Count active sessions only
-      }
+        expiresAt: { gt: new Date() }, // Count active sessions only
+      },
     });
 
     if (sessionCount >= MAXIMUM_LOGGEDIN_DEVICE) {
-      await saveLoginAttempts({ ...attempt, message: "Logged in too many device" });
+      await saveLoginAttempts({
+        ...attempt,
+        message: "Logged in too many device",
+      });
       throw new ApiError(429, "Logged in too many devices");
     }
 
     const Enabled2FA = await prisma.userTotp.findFirst({
       where: { userId: user.id },
-      select: { enabled: true }
+      select: { enabled: true },
     });
 
     if (!Enabled2FA || !Enabled2FA.enabled) {
@@ -276,9 +297,13 @@ export const login = asyncHandler(
         user.id,
         usernameOrEmail,
         device,
-        ip
+        ip,
       );
-      await saveLoginAttempts({ ...attempt, success: true, message: "Logged in succesfully without otp" });
+      await saveLoginAttempts({
+        ...attempt,
+        success: true,
+        message: "Logged in succesfully without otp",
+      });
 
       return res.status(200).json({
         success: true,
@@ -298,11 +323,15 @@ export const login = asyncHandler(
           token,
           tokenHash,
           userIp: ip,
-          userId: user.id // Bind to user
+          userId: user.id, // Bind to user
         },
       }),
-      redisClient.set(REDIS_KEYS.loginOtp(tokenHash), otpHash, { EX: AUTH_OTP.EXPIRES_IN }),
-      redisClient.set(REDIS_KEYS.identifier(tokenHash), usernameOrEmail, { EX: AUTH_OTP.EXPIRES_IN }),
+      redisClient.set(REDIS_KEYS.loginOtp(tokenHash), otpHash, {
+        EX: AUTH_OTP.EXPIRES_IN,
+      }),
+      redisClient.set(REDIS_KEYS.identifier(tokenHash), usernameOrEmail, {
+        EX: AUTH_OTP.EXPIRES_IN,
+      }),
     ]);
 
     const emailSent = await sendLoginOtp({ email: user.email, otp });
@@ -314,15 +343,17 @@ export const login = asyncHandler(
     await redisClient.set(
       REDIS_KEYS.identifierHash(hashValue(usernameOrEmail)),
       "1",
-      { EX: AUTH_OTP.EXPIRES_IN }
+      { EX: AUTH_OTP.EXPIRES_IN },
     );
     await saveLoginAttempts({ ...attempt, success: true, message: "OTP sent" });
 
     res.status(200).json({
       success: true,
+      message: "Two-factor authentication is now enabled. We've sent an OTP to your registered email.",
+      authentication: true,
       token,
     });
-  }
+  },
 );
 
 export const loginOTPVerify = asyncHandler(async (req, res) => {
@@ -337,7 +368,7 @@ export const loginOTPVerify = asyncHandler(async (req, res) => {
       tokenHash,
       createdAt: { gte: new Date(Date.now() - AUTH_OTP.EXPIRES_IN * 1000) },
     },
-    include: { user: true } // Include user to check binding
+    include: { user: true }, // Include user to check binding
   });
 
   if (!dbToken || dbToken.userIp !== ip) {
@@ -371,9 +402,9 @@ export const loginOTPVerify = asyncHandler(async (req, res) => {
 
   const user = await prisma.user.findFirst({
     where: {
-      id: dbToken.userId
+      id: dbToken.userId,
     },
-    select: { id: true, status: true, email: true, username: true }
+    select: { id: true, status: true, email: true, username: true },
   });
 
   if (!user || user.status !== "active") {
@@ -383,14 +414,14 @@ export const loginOTPVerify = asyncHandler(async (req, res) => {
   await Promise.all([
     prisma.tokenHash.delete({ where: { id: dbToken.id } }),
     invalidateOtp(tokenHash),
-    redisClient.del(verifyKey)
+    redisClient.del(verifyKey),
   ]);
 
   const { accessToken, refreshToken } = await actualLogin(
     user.id,
     user.email,
     device,
-    ip
+    ip,
   );
 
   res.status(200).json({
@@ -428,7 +459,7 @@ export const resendLoginOTP = asyncHandler(async (req, res) => {
 
   const user = await prisma.user.findUnique({
     where: { id: dbToken.userId },
-    select: { email: true, status: true }
+    select: { email: true, status: true },
   });
 
   if (!user || user.status !== "active") {
@@ -452,7 +483,7 @@ export const resendLoginOTP = asyncHandler(async (req, res) => {
 });
 
 export const enableOTPbasedLogin = asyncHandler(async (req, res) => {
-  const userId = req.user?.id;
+  const userId = req.session?.userId;
 
   if (!userId) {
     throw new ApiError(400, "Invalid userId");
@@ -460,7 +491,7 @@ export const enableOTPbasedLogin = asyncHandler(async (req, res) => {
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { status: true, email: true }
+    select: { status: true, email: true },
   });
 
   if (!user) {
@@ -473,7 +504,7 @@ export const enableOTPbasedLogin = asyncHandler(async (req, res) => {
 
   const alreadyEnabled = await prisma.userTotp.findFirst({
     where: { userId, enabled: true },
-    select: { userId: true }
+    select: { userId: true },
   });
 
   if (alreadyEnabled) {
@@ -536,7 +567,7 @@ export const enableOTPbasedLogin = asyncHandler(async (req, res) => {
 export const verify2FAOTP = asyncHandler(async (req, res) => {
   const { token } = req.params;
   const { otp } = req.body;
-  const userId = req.user?.id;
+  const userId = req.session?.userId;
 
   const ip = getClientIp(req);
   const device = getDeviceInfo(req);
@@ -549,7 +580,8 @@ export const verify2FAOTP = asyncHandler(async (req, res) => {
     },
   });
 
-  if (!tokenEntry || tokenEntry.userId !== userId) { // Check Binding
+  if (!tokenEntry || tokenEntry.userId !== userId) {
+    // Check Binding
     throw new ApiError(400, "Invalid or expired token");
   }
 
@@ -597,7 +629,10 @@ export const verify2FAOTP = asyncHandler(async (req, res) => {
 
   await redisClient.del(verifyLimiter);
 
-  const user = await prisma.user.findUnique({ where: { id: userOTP.userId }, select: { email: true } });
+  const user = await prisma.user.findUnique({
+    where: { id: userOTP.userId },
+    select: { email: true },
+  });
 
   await sendEnable2FAEmail({
     email: user!.email,
@@ -648,22 +683,24 @@ export const refreshTokenHandler = asyncHandler(async (req, res) => {
   }
 
   /** ROTATE refresh token (BEST PRACTICE) */
-  const {token: newRefreshToken, hash: newRefreshHash} = signRefreshToken({ id: session.userId, role: "user" });
+  const { token: newRefreshToken, hash: newRefreshHash } = signRefreshToken({
+    sessionId: session.userId,
+    role: "user",
+  });
 
   await prisma.$transaction([
     prisma.userSession.update({
       where: { id: session.id },
       data: {
         refreshTokenHash: newRefreshHash,
-        expiresAt: new Date(
-          Date.now() + 10 * 24 * 60 * 60 * 1000
-        ),
+        previousTokenHash: refreshToken,
+        expiresAt: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000),
       },
     }),
   ]);
 
   const newAccessToken = signAccessToken({
-    id: session.userId,
+    sessionId: session.id,
     role: "user",
   });
 
@@ -671,6 +708,186 @@ export const refreshTokenHandler = asyncHandler(async (req, res) => {
     success: true,
     accessToken: newAccessToken.token,
     refreshToken: newRefreshToken,
+  });
+});
+
+export const resetPasswordStep1 = asyncHandler(async (req, res) => {
+  const { emailOrUsername } = req.body;
+
+  const user = await prisma.user.findFirst({
+    where: {
+      OR: [{ email: emailOrUsername }, { username: emailOrUsername }],
+    },
+  });
+
+  if (!user) throw new ApiError(400, "Invalid username or email");
+  if (user.status !== "active") throw new ApiError(403, `Account ${user.status}`);
+
+  const existingOtp = await prisma.userOtp.findFirst({
+    where: {
+      userId: user.id,
+      purpose: "RESET_PASSWORD",
+      expiresAt: { gt: new Date() },
+    },
+  });
+
+  if (existingOtp) {
+    throw new ApiError(429, "Please wait before requesting another OTP");
+  }
+
+  const { otp, otpHash } = generateOTP();
+  const { token, tokenHash } = generateToken();
+
+  const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+  const device = getDeviceInfo(req);
+  const requestedAt = new Date().toLocaleString();
+
+  const deviceLabel = `${device.deviceName} ${device.deviceType}, ${device.browser}, ${device.os}`;
+
+  const mailSent = await resetPasswordOtp({
+    email: user.email,
+    otp,
+    requestedAt,
+    device: deviceLabel,
+  });
+
+  if (!mailSent) throw new ApiError(500, "Failed to send OTP");
+
+  await prisma.$transaction([
+    prisma.userOtp.create({
+      data: {
+        userId: user.id,
+        purpose: "RESET_PASSWORD",
+        codeHash: otpHash,
+        expiresAt,
+      },
+    }),
+    prisma.passwordResetToken.create({
+      data: {
+        userId: user.id,
+        tokenHash,
+        expiresAt,
+      },
+    }),
+  ]);
+
+  // Store token only (no IP binding)
+  await redisClient.set(
+    REDIS_KEYS.resetPassword(token),
+    user.id.toString(),
+    { EX: 5 * 60 }
+  );
+
+  return res.status(200).json({
+    success: true,
+    message: "OTP sent successfully",
+    token,
+  });
+});
+
+export const resetPasswordStep2 = asyncHandler(async (req, res) => {
+  const { token, otp } = req.body;
+
+  const redisUserId = await redisClient.get(REDIS_KEYS.resetPassword(token));
+  if (!redisUserId) throw new ApiError(400, "Invalid or expired token");
+
+  const tokenHash = hashValue(token);
+
+  const resetToken = await prisma.passwordResetToken.findFirst({
+    where: {
+      tokenHash,
+      expiresAt: { gt: new Date() },
+    },
+  });
+
+  if (!resetToken) throw new ApiError(400, "Invalid or expired token");
+
+  const otpRecord = await prisma.userOtp.findFirst({
+    where: {
+      userId: resetToken.userId,
+      purpose: "RESET_PASSWORD",
+      expiresAt: { gt: new Date() },
+    },
+  });
+
+  if (!otpRecord || !verifyOTP(otp, otpRecord.codeHash)) {
+    throw new ApiError(400, "Invalid or expired OTP");
+  }
+
+  const { token: newToken, tokenHash: newTokenHash } = generateToken();
+
+  await prisma.$transaction([
+    prisma.passwordResetToken.update({
+      where: { tokenHash },
+      data: {
+        tokenHash: newTokenHash,
+        expiresAt: new Date(Date.now() + 5 * 60 * 60 * 1000), // 5 hours
+      },
+    }),
+    prisma.userOtp.delete({ where: { id: otpRecord.id } }),
+  ]);
+
+  await Promise.all([
+    redisClient.del(REDIS_KEYS.resetPassword(token)),
+    redisClient.set(
+      REDIS_KEYS.resetPassword(newToken),
+      resetToken.userId.toString(),
+      { EX: 5 * 60 * 60 }
+    ),
+  ]);
+
+  return res.status(200).json({
+    success: true,
+    message: "OTP verified",
+    token: newToken,
+  });
+});
+
+export const resetPasswordStep3 = asyncHandler(async (req, res) => {
+  const { token, password } = req.body;
+
+  const redisUserId = await redisClient.get(REDIS_KEYS.resetPassword(token));
+  if (!redisUserId) throw new ApiError(400, "Invalid or expired token");
+
+  const tokenHash = hashValue(token);
+
+  const resetToken = await prisma.passwordResetToken.findFirst({
+    where: {
+      tokenHash,
+      expiresAt: { gt: new Date() },
+    },
+  });
+
+  if (!resetToken) throw new ApiError(400, "Invalid or expired token");
+
+  const user = await prisma.user.findUnique({
+    where: { id: resetToken.userId },
+  });
+
+  if (!user) throw new ApiError(404, "User not found");
+  if (user.status !== "active") throw new ApiError(403, `Account ${user.status}`);
+
+  if(await bcrypt.compare(password, user.password)){
+    throw new ApiError(400, "Choose different password");
+  }
+
+  const newPasswordHash = await bcrypt.hash(password, 14);
+
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id: user.id },
+      data: { password: newPasswordHash },
+    }),
+    prisma.passwordResetToken.deleteMany({
+      where: { userId: user.id },
+    }),
+  ]);
+
+  await redisClient.del(REDIS_KEYS.resetPassword(token));
+
+  return res.status(200).json({
+    success: true,
+    message: "Password updated successfully",
   });
 });
 

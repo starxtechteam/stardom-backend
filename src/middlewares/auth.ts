@@ -3,15 +3,18 @@ import type { Request, Response, NextFunction } from "express";
 import type { JwtPayload as JwtLibPayload } from "jsonwebtoken";
 
 import type { JwtPayload } from "../types/jwt.types.ts";
+import type { AuthSession } from "../types/auth.types.ts";
 import { ENV } from "../config/env.ts";
 import { asyncHandler } from "../utils/async-handler.ts";
 import { ApiError } from "../utils/api-error.ts";
 import { REDIS_KEYS, redisClient } from "../config/redis.config.ts";
+import { prisma } from "../config/prisma.config.ts";
+import { getClientIp } from "../modules/auth/auth.service.ts";
 
 declare global {
   namespace Express {
     interface Request {
-      user?: JwtPayload;
+      session?: AuthSession;
     }
   }
 }
@@ -50,14 +53,35 @@ export const verifyToken = asyncHandler(
       throw new ApiError(401, msg);
     }
 
-    req.user = decoded;
+    const userSession = await prisma.userSession.findUnique({
+      where: { id: decoded.sessionId }
+    })
+    if(!userSession){
+      throw new ApiError(400, "Invalid or expired session");
+    }
+
+    const ip = getClientIp(req);
+    if(userSession.ipAddress !== ip){
+      throw new ApiError(400, "Session IP mismatch. Please re-login for security reasons.")
+    }
+
+    const authSession: AuthSession = {
+      id: userSession.id,
+      userId: userSession.userId,
+      deviceName: userSession.deviceName,
+      ipAddress: userSession.ipAddress,
+      userAgent: userSession.userAgent,
+      role: decoded.role as "user" | "admin"
+    }
+
+    req.session = authSession;
     next();
   }
 );
 
 export const roleAuth = (...roles: Array<"user" | "admin">) =>
   asyncHandler(async (req, _res, next) => {
-    if (!req.user || !roles.includes(req.user.role as "user" | "admin")) {
+    if (!req.session || !roles.includes(req.session.role as "user" | "admin")) {
       throw new ApiError(403, "Forbidden");
     }
     next();

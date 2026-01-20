@@ -59,7 +59,7 @@ export async function saveLoginAttempts(data: LoginAttempts): Promise<void> {
         os: data.os,
         browser: data.browser,
         success: data.success,
-        message: data.message
+        message: data.message,
       },
     });
   } catch (err) {
@@ -68,7 +68,7 @@ export async function saveLoginAttempts(data: LoginAttempts): Promise<void> {
 }
 
 export async function verifyUserLoginAttempts(
-  credential: LoginAttempts
+  credential: LoginAttempts,
 ): Promise<boolean> {
   try {
     const windowStart = new Date(Date.now() - BLOCK_WINDOW_MINUTES * 60 * 1000);
@@ -133,12 +133,10 @@ export const actualLogin = async (
   userId: string,
   identifier: string,
   device: DeviceInfo,
-  ip: string
+  ip: string,
 ): Promise<{ accessToken: string; refreshToken: string }> => {
-  const access = signAccessToken({ id: userId, role: "user" });
-  const refresh = signRefreshToken({ id: userId, role: "user" });
-
-  await prisma.userSession.create({
+  const refresh = signRefreshToken({ sessionId: userId, role: "user" });
+  const userSession = await prisma.userSession.create({
     data: {
       userId: userId,
       refreshTokenHash: refresh.hash,
@@ -148,6 +146,8 @@ export const actualLogin = async (
       expiresAt: new Date(Date.now() + AUTH_OTP.SESSION_EXPIRE_IN * 86400000),
     },
   });
+
+  const access = signAccessToken({ sessionId: userSession.id, role: "user" });
 
   await saveLoginAttempts({
     identifier,
