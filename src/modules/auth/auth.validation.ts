@@ -28,11 +28,6 @@ const registerSchema = usernameSchema.extend({
   path: ["confirmPassword"],
 });
 
-const verifyAuthSchema = z.object({
-  token: z.string('Token is required'),
-  otp: z.string('OTP is required').min(6, 'Invaild OTP').max(6, 'Invaild OTP')
-})
-
 const userLoginSchema = z.object({
   usernameOrEmail: z
     .string()
@@ -55,8 +50,17 @@ const verify2FASchema = z.object({
 });
 
 const tokenSchema = z.object({
-  token: z.string({ message: "Token is required" }).min(1, "Invalid Token"),
+  token: z
+    .string()
+    .trim()
+    .regex(/^[A-Za-z0-9\-_]+$/, "Invalid token format")
+    .min(32, "Token is too short")
+    .max(128, "Token is too long"),
 });
+
+const verifyAuthSchema = tokenSchema.extend({
+  otp: z.string('OTP is required').min(6, 'Invaild OTP').max(6, 'Invaild OTP')
+})
 
 const resetToken = z.object({
   emailOrUsername: z

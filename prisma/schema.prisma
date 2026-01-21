@@ -83,6 +83,7 @@ model User {
   backupCodes    UserBackupCode[]
   otps           UserOtp[]
   passwordResets PasswordResetToken[]
+  emailUpdates   EmailUpdatesHistory[]
   admin          Admin?
 
   posts     Post[]
@@ -251,9 +252,22 @@ model UserOtp {
   expiresAt  DateTime
   consumedAt DateTime?
 
+  attempts Int @default(0)
+
   createdAt DateTime @default(now())
 
   @@index([userId, purpose])
+}
+
+model EmailUpdatesHistory {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  previousEmail String @unique
+  newEmail String @unique
+
+  updatedAt DateTime @default(now())
 }
 
 // =================================== ADMINS ===================================
