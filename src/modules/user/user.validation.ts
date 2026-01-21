@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { validationInput } from "../../utils/validation.ts";
 
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 const usernameSchema = z.object({
   username: z
     .string()
@@ -10,6 +12,15 @@ const usernameSchema = z.object({
       message:
         "Username must start with a letter and contain only lowercase letters, numbers, dots, or underscores (3–30 chars).",
     }),
+});
+
+export const tokenSchema = z.object({
+  token: z
+    .string()
+    .trim()
+    .regex(/^[A-Za-z0-9\-_]+$/, "Invalid token format")
+    .min(32, "Token is too short")
+    .max(128, "Token is too long"),
 });
 
 const updateProfileSchema = usernameSchema.extend({
@@ -57,6 +68,14 @@ const updateProfileSchema = usernameSchema.extend({
     .optional(),
 });
 
+const updateEmail = z.object({
+  email: z.email("Email is required").regex(emailRegex, {message:"Invaild email"})
+})
+
+const updateEmailStep2 = tokenSchema.extend({
+  otp: z.string({ message: 'OTP is required' }).length(6, 'Invalid OTP'),
+})
+
 const urlWithDomain = (domains: string[], message: string) =>
   z
     .url({ message })
@@ -94,6 +113,7 @@ export const updateSocialSchema = z.object({
     "Instagram URL must be from instagram.com"
   ).optional(),
 });
-
 export const updateProfileValidation = validationInput(updateProfileSchema);
 export const updateSocialValidation = validationInput(updateSocialSchema);
+export const changeEmailValidation = validationInput(updateEmail);
+export const changeEmailValidation2 = validationInput(updateEmailStep2);

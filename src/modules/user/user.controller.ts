@@ -2,6 +2,13 @@ import { asyncHandler } from "../../utils/async-handler.js";
 import { ApiError } from "../../utils/api-error.js";
 import { prisma } from "../../config/prisma.config.ts";
 import { redisClient, REDIS_KEYS } from "../../config/redis.config.ts";
+import {
+  generateOTP,
+  verifyOTP,
+  generateToken,
+} from "../../utils/core.ts";
+import { changeEmailOtp } from "../../mails/user/changeEmailOTP.ts";
+import { getClientIp, hashValue } from "../auth/auth.service.ts";
 
 export const userProfile = asyncHandler(async (req, res) => {
   const userId = req.session?.userId;
@@ -165,7 +172,13 @@ export const updateSocialMedia = asyncHandler(async (req, res) => {
 
   const userId = req.session?.userId;
 
-  if(!websiteUrl && !socialTwitter && !socialFacebook && !socialLinkedin && !socialInstagram){
+  if (
+    !websiteUrl &&
+    !socialTwitter &&
+    !socialFacebook &&
+    !socialLinkedin &&
+    !socialInstagram
+  ) {
     throw new ApiError(400, "No social media fields provided for update");
   }
 
@@ -197,5 +210,212 @@ export const updateSocialMedia = asyncHandler(async (req, res) => {
   return res.status(200).json({
     success: true,
     message: "User social media links updated successfully",
+  });
+});
+
+export const changeMailStep1 = asyncHandler(async (req, res) => {
+  const userId = req.session?.userId;
+  let { email } = req.body;
+  const ip = getClientIp(req);
+
+  if (!email) throw new ApiError(400, "Invalid email");
+
+  email = email.trim().toLowerCase();
+
+  if (!userId) throw new ApiError(401, "Unauthorized");
+
+  if (await redisClient.get(REDIS_KEYS.changeEmail(userId))) {
+    throw new ApiError(429, "Email change already in progress");
+  }
+
+  const last24Hours = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const [existingEmail, user, recentUpdate] = await Promise.all([
+    prisma.user.findUnique({ where: { email } }),
+    prisma.user.findUnique({ where: { id: userId } }),
+    prisma.emailUpdatesHistory.findFirst({
+      where: { userId, updatedAt: { gte: last24Hours } },
+    }),
+  ]);
+  if (recentUpdate) {
+    throw new ApiError(429, "You can only change email once every 24 hours");
+  }
+
+  if (existingEmail) throw new ApiError(409, "Someone use this email");
+  if (!user) throw new ApiError(404, "User not found");
+  if (user.status !== "active")
+    throw new ApiError(403, `Account ${user.status}`);
+  if (user.email === email)
+    throw new ApiError(409, "New email cannot be same as current");
+
+  const { otp, otpHash } = generateOTP();
+  const { token, tokenHash } = generateToken();
+
+  if (!(await changeEmailOtp({ email, otp }))) {
+    throw new ApiError(500, "Failed to send OTP");
+  }
+
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 min
+
+  await Promise.all([
+    prisma.userOtp.create({
+      data: {
+        userId,
+        purpose: "CHANGE_EMAIL_NEW",
+        codeHash: otpHash,
+        expiresAt,
+      },
+    }),
+
+    prisma.tokenHash.create({
+      data: {
+        userId,
+        token,
+        tokenHash,
+        userIp: ip,
+        expiresAt,
+      },
+    }),
+
+    redisClient.set(REDIS_KEYS.changeEmail(userId), email, { EX: 10 * 60 }),
+  ]);
+
+  return res.status(200).json({
+    success: true,
+    message: "OTP sent to new email",
+    token,
+  });
+});
+
+export const changeMailStep2 = asyncHandler(async (req, res) => {
+  const { token, otp } = req.body;
+  const userId = req.session?.userId;
+
+  if (!token || !otp) throw new ApiError(400, "Token and OTP required");
+  if (!userId) throw new ApiError(401, "Unauthorized");
+
+  const checkToken = await prisma.tokenHash.findFirst({
+    where: {
+      userId,
+      tokenHash: hashValue(token),
+      expiresAt: { gte: new Date() },
+    },
+  });
+
+  if (!checkToken) throw new ApiError(400, "Invalid or expired token");
+
+  const checkOtp = await prisma.userOtp.findFirst({
+    where: {
+      userId,
+      purpose: "CHANGE_EMAIL_NEW",
+      expiresAt: { gte: new Date() },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  if (!checkOtp || !verifyOTP(otp, checkOtp.codeHash)) {
+    throw new ApiError(400, "Invalid or expired OTP");
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user || user.status !== "active") {
+    throw new ApiError(403, "Account not active");
+  }
+
+  const { otp: newOtp, otpHash: newOtpHash } = generateOTP();
+  const { token: newToken, tokenHash: newTokenHash } = generateToken();
+
+  if (!(await changeEmailOtp({ email: user.email, otp: newOtp }))) {
+    throw new ApiError(500, "Failed to send OTP");
+  }
+
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+  await Promise.all([
+    prisma.userOtp.update({
+      where: { id: checkOtp.id },
+      data: {
+        purpose: "CHANGE_EMAIL_OLD",
+        codeHash: newOtpHash,
+        expiresAt,
+      },
+    }),
+
+    prisma.tokenHash.update({
+      where: { id: checkToken.id },
+      data: {
+        tokenHash: newTokenHash,
+        expiresAt,
+      },
+    }),
+  ]);
+
+  return res.status(200).json({
+    success: true,
+    message: "OTP sent to old email",
+    token: newToken,
+  });
+});
+
+export const changeMailStep3 = asyncHandler(async (req, res) => {
+  const { token, otp } = req.body;
+  const userId = req.session?.userId;
+
+  if (!token || !otp) throw new ApiError(400, "Token and OTP required");
+  if (!userId) throw new ApiError(401, "Unauthorized");
+
+  const checkToken = await prisma.tokenHash.findFirst({
+    where: {
+      userId,
+      tokenHash: hashValue(token),
+      expiresAt: { gte: new Date() },
+    },
+  });
+
+  if (!checkToken) throw new ApiError(400, "Invalid or expired token");
+
+  const checkOtp = await prisma.userOtp.findFirst({
+    where: {
+      userId,
+      purpose: "CHANGE_EMAIL_OLD",
+      expiresAt: { gte: new Date() },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  if (!checkOtp || !verifyOTP(otp, checkOtp.codeHash)) {
+    throw new ApiError(400, "Invalid or expired OTP");
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user || user.status !== "active") {
+    throw new ApiError(403, "Account not active");
+  }
+
+  const newEmail = await redisClient.get(REDIS_KEYS.changeEmail(userId));
+  if (!newEmail) throw new ApiError(400, "Email change session expired");
+
+  await prisma.$transaction([
+    prisma.emailUpdatesHistory.create({
+      data: {
+        userId,
+        previousEmail: user.email,
+        newEmail,
+      },
+    }),
+
+    prisma.user.update({
+      where: { id: userId },
+      data: { email: newEmail },
+    }),
+
+    prisma.userOtp.delete({ where: { id: checkOtp.id } }),
+    prisma.tokenHash.delete({ where: { id: checkToken.id } }),
+  ]);
+
+  await redisClient.del(REDIS_KEYS.changeEmail(userId));
+
+  return res.status(200).json({
+    success: true,
+    message: "Email updated successfully",
   });
 });
