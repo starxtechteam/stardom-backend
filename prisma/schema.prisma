@@ -252,6 +252,8 @@ model UserOtp {
   expiresAt  DateTime
   consumedAt DateTime?
 
+  attempts Int @default(0)
+
   createdAt DateTime @default(now())
 
   @@index([userId, purpose])

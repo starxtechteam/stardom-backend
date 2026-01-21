@@ -36,7 +36,7 @@ router.post("/register/otp/resend/:token", tokenValidate, resendRegisterOTP);
 router.post("/login", authRateLimit, loginValidate, login);
 router.post("/login/otp-verify", authVerify, loginOTPVerify);
 router.post("/login/otp/resend/:token", tokenValidate, resendLoginOTP);
-router.post("/refresh-token", authRateLimit, refreshTokenValidate, refreshTokenHandler);
+router.post("/refresh-token", authRateLimit, refreshTokenHandler);
 router.post("/reset-password/request", authRateLimit, resetPasswordValidate1, resetPasswordStep1);
 router.post("/reset-password/verify", resetPasswordValidate2, resetPasswordStep2);
 router.post("/reset-password", resetPasswordValidate3, resetPasswordStep3);

@@ -13,6 +13,7 @@ export const REDIS_KEYS = {
 
   resetPassword: (token: string) => `reset:passsword:${token}`,
   changeEmail: (userId: string) => `change:email:${userId}`,
+  changePassword: (userId: string) => `change:password:${userId}`,
 
   // user data cache
   userdata: (userId: string) => `user:profile:${userId}`,

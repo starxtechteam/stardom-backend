@@ -2,13 +2,11 @@ import { asyncHandler } from "../../utils/async-handler.js";
 import { ApiError } from "../../utils/api-error.js";
 import { prisma } from "../../config/prisma.config.ts";
 import { redisClient, REDIS_KEYS } from "../../config/redis.config.ts";
-import {
-  generateOTP,
-  verifyOTP,
-  generateToken,
-} from "../../utils/core.ts";
+import { generateOTP, verifyOTP, generateToken } from "../../utils/core.ts";
 import { changeEmailOtp } from "../../mails/user/changeEmailOTP.ts";
 import { getClientIp, hashValue } from "../auth/auth.service.ts";
+import bcrypt from "bcryptjs";
+import { changePasswordOtp } from "../../mails/user/changePassword.ts";
 
 export const userProfile = asyncHandler(async (req, res) => {
   const userId = req.session?.userId;
@@ -312,7 +310,21 @@ export const changeMailStep2 = asyncHandler(async (req, res) => {
     orderBy: { createdAt: "desc" },
   });
 
+  if (!checkOtp) {
+    throw new ApiError(400, "Invalid or expired OTP");
+  }
+
   if (!checkOtp || !verifyOTP(otp, checkOtp.codeHash)) {
+    await prisma.userOtp.update({
+      where: { id: checkOtp.id },
+      data: { attempts: { increment: 1 } },
+    });
+
+    if (checkOtp.attempts >= 5) {
+      await prisma.userOtp.delete({ where: { id: checkOtp.id } });
+      throw new ApiError(429, "Too many invalid attempts");
+    }
+
     throw new ApiError(400, "Invalid or expired OTP");
   }
 
@@ -382,7 +394,21 @@ export const changeMailStep3 = asyncHandler(async (req, res) => {
     orderBy: { createdAt: "desc" },
   });
 
+  if (!checkOtp) {
+    throw new ApiError(400, "Invalid or expired OTP");
+  }
+
   if (!checkOtp || !verifyOTP(otp, checkOtp.codeHash)) {
+    await prisma.userOtp.update({
+      where: { id: checkOtp.id },
+      data: { attempts: { increment: 1 } },
+    });
+
+    if (checkOtp.attempts >= 5) {
+      await prisma.userOtp.delete({ where: { id: checkOtp.id } });
+      throw new ApiError(429, "Too many invalid attempts");
+    }
+
     throw new ApiError(400, "Invalid or expired OTP");
   }
 
@@ -413,9 +439,191 @@ export const changeMailStep3 = asyncHandler(async (req, res) => {
   ]);
 
   await redisClient.del(REDIS_KEYS.changeEmail(userId));
+  await redisClient.del(REDIS_KEYS.userdata(userId));
 
   return res.status(200).json({
     success: true,
     message: "Email updated successfully",
+  });
+});
+
+export const changePassword = asyncHandler(async (req, res) => {
+  const { oldPassword, newPassword } = req.body;
+  const userId = req.session?.userId;
+
+  if (!userId) throw new ApiError(401, "Unauthorized");
+
+  if (!oldPassword || !newPassword) {
+    throw new ApiError(400, "Old and new password are required");
+  }
+
+  if (oldPassword === newPassword) {
+    throw new ApiError(400, "Choose a different password");
+  }
+
+  if (newPassword.length < 8) {
+    throw new ApiError(400, "Password must be at least 8 characters");
+  }
+
+  const activeOtp = await redisClient.get(REDIS_KEYS.changePassword(userId));
+  if (activeOtp) {
+    throw new ApiError(429, "OTP already sent. Please wait.");
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+  });
+
+  if (!user) throw new ApiError(404, "User not found");
+  if (user.status !== "active") {
+    throw new ApiError(403, `Account is ${user.status}`);
+  }
+
+  const validOld = await bcrypt.compare(oldPassword, user.password);
+  if (!validOld) {
+    throw new ApiError(400, "Invalid credentials");
+  }
+
+  const twoFA = await prisma.userTotp.findFirst({
+    where: { userId },
+    select: { enabled: true },
+  });
+
+  const hashPassword = await bcrypt.hash(newPassword, 14);
+  if (!twoFA?.enabled) {
+    await prisma.user.update({
+      where: { id: userId },
+      data: { password: hashPassword },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Password has been changed",
+    });
+  }
+
+  // 🛡 If 2FA is enabled → OTP challenge
+  const { otp, otpHash } = generateOTP();
+  const { token, tokenHash } = generateToken();
+
+  if (!(await changePasswordOtp({ email: user.email, otp }))) {
+    throw new ApiError(500, "Failed to send OTP");
+  }
+
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+  const ip = getClientIp(req);
+
+  await prisma.$transaction([
+    prisma.userOtp.create({
+      data: {
+        userId,
+        purpose: "CHANGE_PASSWORD",
+        codeHash: otpHash,
+        expiresAt,
+      },
+    }),
+
+    prisma.tokenHash.create({
+      data: {
+        userId,
+        token,
+        tokenHash,
+        userIp: ip,
+        expiresAt,
+      },
+    }),
+  ]);
+
+  await redisClient.set(REDIS_KEYS.changePassword(userId), hashPassword, {
+    EX: 5 * 60,
+  });
+
+  return res.status(200).json({
+    success: true,
+    message: "OTP sent successfully",
+    token,
+  });
+});
+
+export const changePasswordVerifyOTP = asyncHandler(async (req, res) => {
+  const { token, otp } = req.body;
+  const userId = req.session?.userId;
+
+  if (!userId) throw new ApiError(401, "Unauthorized");
+  if (!token || !otp) throw new ApiError(400, "Token and OTP are required");
+
+  const newPasswordHash = await redisClient.get(
+    REDIS_KEYS.changePassword(userId),
+  );
+
+  if (!newPasswordHash) {
+    throw new ApiError(400, "Password change session expired");
+  }
+
+  const checkToken = await prisma.tokenHash.findFirst({
+    where: {
+      userId,
+      tokenHash: hashValue(token),
+      expiresAt: { gte: new Date() },
+    },
+  });
+
+  if (!checkToken) {
+    throw new ApiError(400, "Invalid or expired token");
+  }
+
+  const checkOtp = await prisma.userOtp.findFirst({
+    where: {
+      userId,
+      purpose: "CHANGE_PASSWORD",
+      expiresAt: { gte: new Date() },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  if (!checkOtp) {
+    throw new ApiError(400, "Invalid or expired OTP");
+  }
+
+  if (!checkOtp || !verifyOTP(otp, checkOtp.codeHash)) {
+    await prisma.userOtp.update({
+      where: { id: checkOtp.id },
+      data: { attempts: { increment: 1 } },
+    });
+
+    if (checkOtp.attempts >= 5) {
+      await prisma.userOtp.delete({ where: { id: checkOtp.id } });
+      throw new ApiError(429, "Too many invalid attempts");
+    }
+
+    throw new ApiError(400, "Invalid or expired OTP");
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+  });
+
+  if (!user) throw new ApiError(404, "User not found");
+  if (user.status !== "active") {
+    throw new ApiError(403, `Account is ${user.status}`);
+  }
+
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id: userId },
+      data: { password: newPasswordHash },
+    }),
+
+    prisma.userOtp.delete({ where: { id: checkOtp.id } }),
+
+    prisma.tokenHash.delete({ where: { id: checkToken.id } }),
+  ]);
+
+  await redisClient.del(REDIS_KEYS.changePassword(userId));
+  await redisClient.del(REDIS_KEYS.userdata(userId));
+
+  return res.status(200).json({
+    success: true,
+    message: "Password has been changed",
   });
 });
