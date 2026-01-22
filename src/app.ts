@@ -4,7 +4,9 @@ import morgan from "morgan";
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
 import cors from "cors";
+import swaggerUi from "swagger-ui-express";
 import { ENV } from "./config/env.ts";
+import { swaggerSpec } from "./config/swagger.ts";
 import apiRoutes from "./routes/api.routes.ts";
 import { errorMiddleware } from "./middlewares/error.middleware.ts";
 import "./config/prisma.config.ts";
@@ -35,6 +37,9 @@ const globalRateLimit = rateLimit({
 app.use(globalRateLimit);
 
 app.use(compression());
+
+// Swagger documentation
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 app.use("/api/v1", apiRoutes);
 app.use(errorMiddleware);
