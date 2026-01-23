@@ -16,7 +16,11 @@ const swaggerOptions = {
     servers: [
       {
         url: `http://localhost:${ENV.PORT}` || "http://localhost:4000",
-        description: "Development Server",
+        description: "Development",
+      },
+      {
+        url: "https://mining.trinitycoin.ai",
+        description: "Production",
       },
     ],
     components: {
