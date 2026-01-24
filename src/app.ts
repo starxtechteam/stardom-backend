@@ -4,6 +4,7 @@ import morgan from "morgan";
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
 import cors from "cors";
+import logger from "./middlewares/logger.ts";
 import swaggerUi from "swagger-ui-express";
 import { ENV } from "./config/env.ts";
 import { swaggerSpec } from "./config/swagger.ts";
@@ -14,7 +15,7 @@ import "./config/prisma.config.ts";
 const app = express();
 
 app.use(helmet());
-app.use(morgan("dev"));
+app.use(logger);
 app.use(express.json());
 app.use(cors({
     origin: ENV.ALLOWED_ORIGINS.split(","),

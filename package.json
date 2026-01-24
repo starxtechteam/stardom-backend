@@ -47,6 +47,9 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "@aws-sdk/client-cloudfront": "^3.975.0",
+    "@aws-sdk/client-s3": "^3.975.0",
+    "@aws-sdk/s3-request-presigner": "^3.975.0",
     "@prisma/adapter-pg": "^7.2.0",
     "@prisma/client": "^7.2.0",
     "bcryptjs": "^3.0.3",
@@ -70,6 +73,8 @@
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
     "ua-parser-js": "^2.0.8",
+    "uuid": "^13.0.0",
+    "winston": "^3.19.0",
     "zod": "^4.3.5"
   }
 }
