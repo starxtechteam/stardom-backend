@@ -235,6 +235,122 @@ export const updateAvatarUrl = asyncHandler(async (req, res) => {
   });
 });
 
+export const updateBannerUrl = asyncHandler(async (req, res) => {
+  const { fileKey } = req.body as { fileKey?: string };
+  const session = req.session;
+  const userId = session?.userId;
+  const ipAddress = session?.ipAddress;
+
+  if (!userId) {
+    throw new ApiError(401, "Unauthorized");
+  }
+
+  if (!fileKey || typeof fileKey !== "string" || fileKey.length > 256) {
+    throw new ApiError(400, "Invalid file key");
+  }
+
+  const [upload, user] = await Promise.all([
+    prisma.awsUploads.findFirst({
+      where: { fileKey, userId },
+    }),
+
+    prisma.user.findUnique({
+      where: { id: userId },
+    }),
+  ]);
+
+  if (!upload) {
+    throw new ApiError(400, "Invalid file key");
+  }
+
+  if (upload.ipAddress !== ipAddress) {
+    throw new ApiError(400, "Invalid session");
+  }
+
+  if (upload.status !== "CREATED") {
+    throw new ApiError(409, `File is already ${upload.status}`);
+  }
+
+  const maxAgeMs = 10 * 60 * 1000;
+  if (Date.now() - upload.createdAt.getTime() > maxAgeMs) {
+    throw new ApiError(400, "Upload link expired");
+  }
+
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  if (user.status !== "active") {
+    throw new ApiError(403, `Account is ${user.status}`);
+  }
+
+  const imgUrl = `${ENV.AWS_CDN_URL}/${fileKey}`;
+
+  try {
+    const headRes = await axios.head(imgUrl, {
+      timeout: 3000,
+      maxRedirects: 0,
+      validateStatus: (status) => status === 200,
+    });
+
+    if (headRes.status !== 200) {
+      throw new Error("Not found");
+    }
+  } catch {
+    throw new ApiError(400, "File not found in storage");
+  }
+
+  // Atomic DB updates
+  const result = await prisma.$transaction(async (tx) => {
+    const updatedUser = await tx.user.update({
+      where: { id: userId },
+      data: { bannerUrl: imgUrl },
+    });
+
+    const updatedUpload = await tx.awsUploads.update({
+      where: { id: upload.id },
+      data: { status: "USED" },
+    });
+
+    return { updatedUser, updatedUpload };
+  });
+
+  if (user.bannerUrl) {
+    const oldKey = user.bannerUrl.replace(`${ENV.AWS_CDN_URL}/`, "");
+
+    try {
+      await prisma.awsUploads.updateMany({
+        where: {
+          fileKey: oldKey,
+          userId,
+          status: "USED",
+        },
+        data: {
+          status: "DELETED",
+        },
+      });
+
+      deleteFile(oldKey).catch((err) => {
+        logger.error(
+          `Failed to delete old banner image for user ${userId}: ${err?.message}`,
+        );
+      });
+    } catch (err) {
+      logger.error(
+        `Failed to mark old banner as DELETED for user ${userId}: ${(err as Error).message}`,
+      );
+    }
+  }
+
+  redisClient.del(REDIS_KEYS.userdata(userId)).catch(() => null);
+
+  return res.status(200).json({
+    success: true,
+    message: "User banner updated",
+    bannerUrl: result.updatedUser.bannerUrl,
+  });
+});
+
 export const userProfileUpdate = asyncHandler(async (req, res) => {
   const {
     username,
