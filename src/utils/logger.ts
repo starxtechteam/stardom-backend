@@ -1,6 +1,7 @@
 import { createLogger, format, transports } from 'winston';
 import fs from 'node:fs';
 import path from 'path';
+import { ENV } from '../config/env.ts';
 
 // Ensure logs directory exists
 const logDir = 'logs';
@@ -22,7 +23,7 @@ const logger = createLogger({
 });
 
 // In development, log to console
-if (process.env.NODE_ENV !== 'production') {
+if (ENV.NODE_ENV !== 'production') {
   logger.add(
     new transports.Console({
       format: format.combine(
@@ -61,7 +62,7 @@ export const miningLogger = createLogger({
 });
 
 // In development, also log mining to console
-if (process.env.NODE_ENV !== 'production') {
+if (ENV.NODE_ENV !== 'production') {
   miningLogger.add(
     new transports.Console({
       format: format.combine(

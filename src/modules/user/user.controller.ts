@@ -1,3 +1,4 @@
+import axios from "axios";
 import { asyncHandler } from "../../utils/async-handler.js";
 import { ApiError } from "../../utils/api-error.js";
 import { prisma } from "../../config/prisma.config.ts";
@@ -7,6 +8,52 @@ import { changeEmailOtp } from "../../mails/user/changeEmailOTP.ts";
 import { getClientIp, hashValue } from "../auth/auth.service.ts";
 import bcrypt from "bcryptjs";
 import { changePasswordOtp } from "../../mails/user/changePassword.ts";
+import { generateUploadURL, deleteFile } from "../../config/aws.ts";
+import { ENV } from "../../config/env.ts";
+import logger from "../../utils/logger.ts";
+
+export const generatePresignedUrl = asyncHandler(async (req, res) => {
+  const userId = req.session?.userId;
+  const { mimeType } = req.body;
+
+  if (!userId) {
+    throw new ApiError(401, "Unauthorized");
+  }
+
+  if (!mimeType) {
+    throw new ApiError(400, "mimeType is required");
+  }
+
+  const allowedMimeTypes = [
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/gif",
+  ];
+
+  if (!allowedMimeTypes.includes(mimeType)) {
+    throw new ApiError(400, "Unsupported file type");
+  }
+
+  const { url, key } = await generateUploadURL(mimeType);
+  const ip = getClientIp(req);
+  await prisma.awsUploads.create({
+    data: {
+      userId,
+      mimeType,
+      fileKey: key,
+      uploadUrl: url,
+      ipAddress: ip,
+    },
+  });
+
+  return res.status(200).json({
+    success: true,
+    message: "Presigned URL generated",
+    uploadUrl: url,
+    fileKey: key,
+  });
+});
 
 export const userProfile = asyncHandler(async (req, res) => {
   const userId = req.session?.userId;
@@ -69,6 +116,122 @@ export const userProfile = asyncHandler(async (req, res) => {
     success: true,
     message: "Fetched user data",
     user: user,
+  });
+});
+
+export const updateAvatarUrl = asyncHandler(async (req, res) => {
+  const { fileKey } = req.body as { fileKey?: string };
+  const session = req.session;
+  const userId = session?.userId;
+  const ipAddress = session?.ipAddress;
+
+  if (!userId) {
+    throw new ApiError(401, "Unauthorized");
+  }
+
+  if (!fileKey || typeof fileKey !== "string" || fileKey.length > 256) {
+    throw new ApiError(400, "Invalid file key");
+  }
+
+  const [upload, user] = await Promise.all([
+    prisma.awsUploads.findFirst({
+      where: { fileKey, userId },
+    }),
+
+    prisma.user.findUnique({
+      where: { id: userId },
+    }),
+  ]);
+
+  if (!upload) {
+    throw new ApiError(400, "Invalid file key");
+  }
+
+  if (upload.ipAddress !== ipAddress) {
+    throw new ApiError(400, "Invalid session");
+  }
+
+  if (upload.status !== "CREATED") {
+    throw new ApiError(409, `File is already ${upload.status}`);
+  }
+
+  const maxAgeMs = 10 * 60 * 1000;
+  if (Date.now() - upload.createdAt.getTime() > maxAgeMs) {
+    throw new ApiError(400, "Upload link expired");
+  }
+
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  if (user.status !== "active") {
+    throw new ApiError(403, `Account is ${user.status}`);
+  }
+
+  const imgUrl = `${ENV.AWS_CDN_URL}/${fileKey}`;
+
+  try {
+    const headRes = await axios.head(imgUrl, {
+      timeout: 3000,
+      maxRedirects: 0,
+      validateStatus: (status) => status === 200,
+    });
+
+    if (headRes.status !== 200) {
+      throw new Error("Not found");
+    }
+  } catch {
+    throw new ApiError(400, "File not found in storage");
+  }
+
+  // Atomic DB updates
+  const result = await prisma.$transaction(async (tx) => {
+    const updatedUser = await tx.user.update({
+      where: { id: userId },
+      data: { avatarUrl: imgUrl },
+    });
+
+    const updatedUpload = await tx.awsUploads.update({
+      where: { id: upload.id },
+      data: { status: "USED" },
+    });
+
+    return { updatedUser, updatedUpload };
+  });
+
+  if (user.avatarUrl) {
+    const oldKey = user.avatarUrl.replace(`${ENV.AWS_CDN_URL}/`, "");
+
+    try {
+      await prisma.awsUploads.updateMany({
+        where: {
+          fileKey: oldKey,
+          userId,
+          status: "USED",
+        },
+        data: {
+          status: "DELETED",
+        },
+      });
+
+      deleteFile(oldKey).catch((err) => {
+        logger.error(
+          `Failed to delete old profile image for user ${userId}: ${err?.message}`,
+        );
+      });
+    } catch (err) {
+      logger.error(
+        `Failed to mark old avatar as DELETED for user ${userId}: ${(err as Error).message}`,
+      );
+    }
+  }
+
+  redisClient.del(REDIS_KEYS.userdata(userId)).catch(() => null);
+
+  return res.status(200).json({
+    success: true,
+    message: "User avatar updated",
+    avatarUrl: result.updatedUser.avatarUrl,
   });
 });
 

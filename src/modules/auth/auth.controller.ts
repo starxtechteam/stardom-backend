@@ -348,7 +348,7 @@ export const login = asyncHandler(
     );
     await saveLoginAttempts({ ...attempt, success: true, message: "OTP sent" });
 
-    res.status(200).json({
+    res.status(202).json({
       success: true,
       message: "Two-factor authentication is now enabled. We've sent an OTP to your registered email.",
       authentication: true,
