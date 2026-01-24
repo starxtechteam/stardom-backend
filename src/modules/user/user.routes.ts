@@ -7,7 +7,9 @@ import {
   changeMailStep2,
   changeMailStep3,
   changePassword,
-  changePasswordVerifyOTP
+  changePasswordVerifyOTP,
+  generatePresignedUrl,
+  updateAvatarUrl
 } from "./user.controller.ts";
 import { verifyToken, roleAuth } from "../../middlewares/auth.ts";
 import {
@@ -21,6 +23,68 @@ import {
 
 const router = express.Router();
 router.use(verifyToken, roleAuth("user"));
+
+/**
+ * @swagger
+ * /api/v1/user/presigned-url:
+ *   post:
+ *     summary: Generate Presigned URL for file upload
+ *     description: |
+ *       Generate a presigned URL for uploading files to AWS S3.
+ *       This URL allows direct browser uploads to S3 without exposing AWS credentials.
+ *       
+ *       **Supported file types:**
+ *       - image/jpeg
+ *       - image/png
+ *       - image/webp
+ *       - image/gif
+ *       
+ *       **Response includes:**
+ *       - uploadUrl: AWS presigned URL for file upload
+ *       - fileKey: S3 object key for tracking the upload
+ *     tags: [User]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - mimeType
+ *             properties:
+ *               mimeType:
+ *                 type: string
+ *                 enum: [image/jpeg, image/png, image/webp, image/gif]
+ *                 example: image/jpeg
+ *     responses:
+ *       200:
+ *         description: Presigned URL generated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 uploadUrl:
+ *                   type: string
+ *                   format: uri
+ *                   description: AWS S3 presigned URL for uploading the file
+ *                 fileKey:
+ *                   type: string
+ *                   description: S3 object key for the uploaded file
+ *       400:
+ *         description: mimeType is required or unsupported file type
+ *       401:
+ *         description: Unauthorized - missing or invalid token
+ *       429:
+ *         description: Too many requests
+ */
+router.post("/presigned-url", generatePresignedUrl);
 
 /**
  * @swagger
@@ -194,6 +258,76 @@ router.get("/profile", userProfile);
  *         description: Unauthorized - missing or invalid token
  */
 router.put("/profile", updateProfileValidation, userProfileUpdate);
+
+/**
+ * @swagger
+ * /api/v1/user/profile/avatar:
+ *   put:
+ *     summary: Update user avatar
+ *     description: |
+ *       Update the user's avatar image after uploading to AWS S3.
+ *       
+ *       **Workflow:**
+ *       1. Call `/presigned-url` to get upload URL
+ *       2. Upload image to S3 using the presigned URL
+ *       3. Call this endpoint with the fileKey to confirm and set avatar
+ *       
+ *       **Validation checks:**
+ *       - fileKey must exist and belong to authenticated user
+ *       - File must be uploaded from same IP address
+ *       - File must be in CREATED status (not already used)
+ *       - File upload link must not be expired (10 minute validity)
+ *       - File must exist in AWS S3
+ *       - User account must be active
+ *       
+ *       **Response:**
+ *       - Updates user's avatarUrl
+ *       - Marks file as USED in database
+ *       - Automatically cleans up old avatar records
+ *     tags: [User]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - fileKey
+ *             properties:
+ *               fileKey:
+ *                 type: string
+ *                 description: S3 file key from presigned-url response
+ *                 example: "uploads/user123/avatar-1234567890.jpg"
+ *     responses:
+ *       200:
+ *         description: Avatar updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 avatarUrl:
+ *                   type: string
+ *                   format: uri
+ *                   description: CDN URL of the new avatar image
+ *       400:
+ *         description: Invalid file key, upload expired, or file not found in S3
+ *       401:
+ *         description: Unauthorized - missing or invalid token
+ *       403:
+ *         description: Account not active
+ *       404:
+ *         description: User not found
+ *       409:
+ *         description: File already used or in processing
+ */
+router.put("/profile/avatar", updateAvatarUrl);
 
 /**
  * @swagger
