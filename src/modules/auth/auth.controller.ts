@@ -666,6 +666,40 @@ export const verify2FAOTP = asyncHandler(async (req, res) => {
   });
 });
 
+export const disableOTPbasedLogin = asyncHandler(async (req, res) => {
+  const userId = req.session?.userId;
+  const { password } = req.body;
+
+  if (!userId) {
+    throw new ApiError(400, "Invalid userId");
+  }
+
+  const user = await prisma.user.findUnique({
+    where: {id: userId},
+  });
+
+  if(!user){
+    throw new ApiError(404, "user not found");
+  }
+
+  if(user.status !== "active"){
+    throw new ApiError(403, `Account is ${user.status}`);
+  }
+
+  if(!(await bcrypt.compare(password, user.password))){
+    throw new ApiError(400, "Invaild Credentials");
+  }
+
+  await prisma.userTotp.updateMany({  
+    where: { userId },
+    data: { enabled: false },
+  });
+  res.status(200).json({
+    success: true,
+    message: "OTP-based login disabled successfully",
+  });
+});
+
 export const refreshTokenHandler = asyncHandler(async (req, res) => {
   const { token: refreshToken } = req.body;
   const ip = getClientIp(req);

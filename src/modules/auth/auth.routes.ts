@@ -7,6 +7,7 @@ import {
   loginOTPVerify,
   enableOTPbasedLogin,
   verify2FAOTP,
+  disableOTPbasedLogin,
   resendLoginOTP,
   refreshTokenHandler,
   resetPasswordStep1,
@@ -22,10 +23,10 @@ import {
   loginValidate,
   tokenValidate,
   verify2FAValidate,
-  refreshTokenValidate,
   resetPasswordValidate1,
   resetPasswordValidate2,
   resetPasswordValidate3,
+  disable2FAValidation,
 } from "./auth.validation.ts";
 import { authRateLimit } from "../../middlewares/ratelimit.ts";
 
@@ -505,6 +506,61 @@ router.post(
   verify2FAValidate,
   verify2FAOTP,
 );
+
+/**
+ * @swagger
+ * /api/v1/auth/2fa/disable:
+ *   post:
+ *     summary: Disable 2FA OTP based login
+ *     description: Disable two-factor authentication for the authenticated user. Password verification required for security.
+ *     tags: [Authentication, 2FA]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: header
+ *         name: Authorization
+ *         required: true
+ *         schema:
+ *           type: string
+ *           example: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+ *         description: JWT Bearer access token
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - password
+ *             properties:
+ *               password:
+ *                 type: string
+ *                 format: password
+ *                 description: User's current password for verification
+ *                 example: SecurePass123!
+ *     responses:
+ *       200:
+ *         description: 2FA OTP disabled successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                   example: OTP-based login disabled successfully
+ *       400:
+ *         description: Invalid password or 2FA not enabled
+ *       401:
+ *         description: Unauthorized - invalid or missing token
+ *       403:
+ *         description: Account not active
+ *       404:
+ *         description: User not found
+ */
+router.post("/2fa/disable", disable2FAValidation, disableOTPbasedLogin);
 
 /**
  * @swagger
