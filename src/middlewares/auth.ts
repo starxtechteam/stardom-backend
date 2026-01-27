@@ -89,6 +89,7 @@ export const verifyToken = asyncHandler(
       ipAddress: userSession.ipAddress,
       userAgent: userSession.userAgent,
       role: decoded.role as "user" | "admin",
+      token: token,
     };
 
     req.session = authSession;
