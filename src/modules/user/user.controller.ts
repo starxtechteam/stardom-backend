@@ -357,7 +357,6 @@ export const updateBannerUrl = asyncHandler(async (req, res) => {
 
 export const userProfileUpdate = asyncHandler(async (req, res) => {
   const {
-    username,
     first_name,
     last_name,
     bio,
@@ -367,6 +366,7 @@ export const userProfileUpdate = asyncHandler(async (req, res) => {
     birthdate,
     location,
   } = req.body;
+  let { username } = req.body;
 
   const userId = req.session?.userId;
 
@@ -374,17 +374,47 @@ export const userProfileUpdate = asyncHandler(async (req, res) => {
     throw new ApiError(401, "Unauthorized");
   }
 
-  if (username) {
-    const existing = await prisma.user.findFirst({
-      where: {
-        username,
-        NOT: { id: userId },
-      },
-      select: { id: true },
-    });
+  const currentUser = await prisma.user.findUnique({
+    where: { id: userId },
+  });
 
-    if (existing) {
-      throw new ApiError(400, "Username already taken");
+  if (!currentUser) {
+    throw new ApiError(404, "User not found");
+  }
+
+  if (currentUser.status !== "active") {
+    throw new ApiError(403, `Account is ${currentUser.status}`);
+  }
+
+  if (username) {
+    username = username.trim().toLowerCase();
+
+    if (username !== currentUser.username) {
+      if (isReservedUsername(username)) {
+        throw new ApiError(400, "Username is reserved");
+      }
+
+      const redisKey = REDIS_KEYS.usernameAvailability(username);
+      const cached = await redisClient.get(redisKey);
+
+      if (cached === "0") {
+        throw new ApiError(409, "Username already exists");
+      }
+
+      const existing = await prisma.user.findFirst({
+        where: {
+          username,
+          NOT: { id: userId },
+        },
+        select: { id: true },
+      });
+
+      if (existing) {
+        throw new ApiError(409, "Username already exists");
+      }
+
+      await redisClient.del(REDIS_KEYS.usernameAvailability(currentUser.username));
+      await redisClient.del(REDIS_KEYS.usernameAvailability(username));
     }
   }
 
@@ -931,7 +961,7 @@ export const checkUsernameAvailability = asyncHandler(async (req, res) => {
   if (!USERNAME_REGEX.test(username)) {
     throw new ApiError(
       400,
-      "Username must start with a letter and contain only letters, numbers, and underscores (3–30 chars)"
+      "Username must start with a letter and contain only letters, numbers, and underscores (3–30 chars)",
     );
   }
 
@@ -959,9 +989,7 @@ export const checkUsernameAvailability = asyncHandler(async (req, res) => {
   const available = !existing;
 
   await redisClient.set(redisKey, available ? "1" : "0", {
-    EX: available
-      ? USERNAME_CACHE_TTL_AVAILABLE
-      : USERNAME_CACHE_TTL_TAKEN,
+    EX: available ? USERNAME_CACHE_TTL_AVAILABLE : USERNAME_CACHE_TTL_TAKEN,
     NX: true,
   });
 
@@ -972,4 +1000,3 @@ export const checkUsernameAvailability = asyncHandler(async (req, res) => {
     cached: false,
   });
 });
-
