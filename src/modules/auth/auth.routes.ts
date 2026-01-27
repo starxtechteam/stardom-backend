@@ -14,6 +14,7 @@ import {
   resetPasswordStep3,
   logout,
   logoutAllDevices,
+  activeSessions,
 } from "./auth.controller.js";
 import {
   registerValidation,
@@ -554,5 +555,65 @@ router.post("/logout", logout);
  *         description: Unauthorized - invalid or missing token
  */
 router.post("/logout/all-devices", logoutAllDevices);
+
+/**
+ * @swagger
+ * /api/v1/auth/sessions:
+ *   get:
+ *     summary: Get all active sessions
+ *     description: |
+ *       Retrieve a list of all active sessions for the authenticated user.
+ *       Shows device information, IP addresses, login times, and session expiration times.
+ *       Useful for security monitoring and managing multiple logins.
+ *     tags: [Authentication]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Active sessions retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 sessions:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                         description: Session ID
+ *                       deviceName:
+ *                         type: string
+ *                         description: Device name or model (e.g., iPhone 12, Dell XPS)
+ *                       userAgent:
+ *                         type: string
+ *                         description: Device type (e.g., mobile, tablet, desktop)
+ *                       ipAddress:
+ *                         type: string
+ *                         format: ipv4
+ *                         description: IP address of the device
+ *                       createdAt:
+ *                         type: string
+ *                         format: date-time
+ *                         description: Session creation timestamp
+ *                       expiresAt:
+ *                         type: string
+ *                         format: date-time
+ *                         description: Session expiration timestamp
+ *                       isCurrent:
+ *                         type: boolean
+ *                         description: Indicates if this is the current session
+ *       401:
+ *         description: Unauthorized - invalid or missing token
+ *       404:
+ *         description: User not found
+ */
+router.get("/sessions", activeSessions);
 
 export default router;

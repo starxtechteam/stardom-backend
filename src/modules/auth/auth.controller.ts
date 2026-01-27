@@ -999,3 +999,37 @@ export const logoutAllDevices = asyncHandler(async (req, res) => {
     message: "Logged out from all devices successfully",
   });
 });
+
+export const activeSessions = asyncHandler(async (req, res) => {
+  const userId = req.session?.userId;
+
+  if (!userId) {
+    throw new ApiError(400, "Invalid request");
+  }
+
+  const sessions = await prisma.userSession.findMany({
+    where: {
+      userId: userId,
+      expiresAt: { gt: new Date() },
+    },
+    select: {
+      id: true,
+      ipAddress: true,
+      deviceName: true,
+      userAgent: true,
+      createdAt: true,
+      expiresAt: true,
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  const resultSessions = sessions.map((session) => ({
+    ...session,
+    thisDevice: session.id === req.session?.id,
+  }));
+
+  res.status(200).json({
+    success: true,
+    sessions: resultSessions,
+  });
+});
