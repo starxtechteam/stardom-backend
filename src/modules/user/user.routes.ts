@@ -9,7 +9,8 @@ import {
   changePassword,
   changePasswordVerifyOTP,
   generatePresignedUrl,
-  updateAvatarUrl
+  updateAvatarUrl,
+  updateBannerUrl,
 } from "./user.controller.ts";
 import { verifyToken, roleAuth } from "../../middlewares/auth.ts";
 import {
@@ -328,6 +329,76 @@ router.put("/profile", updateProfileValidation, userProfileUpdate);
  *         description: File already used or in processing
  */
 router.put("/profile/avatar", updateAvatarUrl);
+
+/**
+ * @swagger
+ * /api/v1/user/profile/banner:
+ *   put:
+ *     summary: Update user banner
+ *     description: |
+ *       Update the user's banner image after uploading to AWS S3.
+ *       
+ *       **Workflow:**
+ *       1. Call `/presigned-url` to get upload URL
+ *       2. Upload image to S3 using the presigned URL
+ *       3. Call this endpoint with the fileKey to confirm and set banner
+ *       
+ *       **Validation checks:**
+ *       - fileKey must exist and belong to authenticated user
+ *       - File must be uploaded from same IP address
+ *       - File must be in CREATED status (not already used)
+ *       - File upload link must not be expired (10 minute validity)
+ *       - File must exist in AWS S3
+ *       - User account must be active
+ *       
+ *       **Response:**
+ *       - Updates user's bannerUrl
+ *       - Marks file as USED in database
+ *       - Automatically cleans up old banner records
+ *     tags: [User]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - fileKey
+ *             properties:
+ *               fileKey:
+ *                 type: string
+ *                 description: S3 file key from presigned-url response
+ *                 example: "uploads/user123/banner-1234567890.jpg"
+ *     responses:
+ *       200:
+ *         description: Banner updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 bannerUrl:
+ *                   type: string
+ *                   format: uri
+ *                   description: CDN URL of the new banner image
+ *       400:
+ *         description: Invalid file key, upload expired, or file not found in S3
+ *       401:
+ *         description: Unauthorized - missing or invalid token
+ *       403:
+ *         description: Account not active
+ *       404:
+ *         description: User not found
+ *       409:
+ *         description: File already used or in processing
+ */
+router.put("/profile/banner", updateBannerUrl);
 
 /**
  * @swagger
