@@ -1,6 +1,9 @@
 import {
   CloudFrontClient,
   CreateInvalidationCommand,
+} from "@aws-sdk/client-cloudfront";
+
+import type {
   CreateInvalidationCommandInput,
 } from "@aws-sdk/client-cloudfront";
 import logger from "../utils/logger.ts";
