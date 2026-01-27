@@ -9,6 +9,7 @@ import { ENV } from "../../config/env.js";
 import type { JwtPayload } from "../../types/jwt.types.js";
 import { redisClient, REDIS_KEYS } from "../../config/redis.config.ts";
 import { AUTH_OTP } from "../../constants/auth.constants.ts";
+import { RESERVED_USERNAMES } from "../../constants/user.constants.ts";
 
 const MAX_ATTEMPTS = 5;
 const BLOCK_WINDOW_MINUTES = 15;
@@ -194,3 +195,12 @@ export const logAuditEvent = async (
     console.error("Failed to log audit event:", err);
   }
 };
+
+export const RESERVED_SET = new Set(
+  RESERVED_USERNAMES.map((u) => u.toLowerCase())
+);
+
+export function isReservedUsername(username: string) {
+  return RESERVED_SET.has(username.toLowerCase());
+}
+

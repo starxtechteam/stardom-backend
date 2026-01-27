@@ -31,6 +31,7 @@ import {
   verifyRefreshToken,
   signRefreshToken,
   signAccessToken,
+  isReservedUsername,
 } from "./auth.service.ts";
 import type { LoginAttempts } from "../../types/auth.types.ts";
 
@@ -39,8 +40,19 @@ export const registerStep1 = asyncHandler(
     req: Request<{}, {}, { username: string; email: string; password: string }>,
     res: Response,
   ) => {
-    const { username, email, password } = req.body;
+    let { username, email, password } = req.body;
+    username = username.trim().toLowerCase();
+    email = email.trim().toLowerCase();
     const ip = getClientIp(req);
+
+    if (isReservedUsername(username)) {
+      throw new ApiError(400, "Username is not allowed");
+    }
+
+    const isAvailable = await redisClient.get(REDIS_KEYS.usernameAvailability(username));
+    if (isAvailable === "0") {
+      throw new ApiError(409, "Username already exists");
+    }
 
     const registerAttemptKey = `rate_limit:register:${ip}`;
     const attempts = await redisClient.incr(registerAttemptKey);
@@ -84,6 +96,11 @@ export const registerStep1 = asyncHandler(
     if (!emailSent) {
       throw new ApiError(400, "Something went wrong. Please try again later");
     }
+
+    await redisClient.set(REDIS_KEYS.usernameAvailability(username), "0", {
+      EX: 600,
+      NX: true,
+    });
 
     res.status(200).json({
       success: true,
@@ -174,6 +191,7 @@ export const registerStep2 = asyncHandler(
       redisClient.del(verifyLimitKey),
       prisma.tokenHash.deleteMany({ where: { token } }),
       sendWelcomeEmail({ email: user.email, name: user.username }),
+      redisClient.del(REDIS_KEYS.usernameAvailability(newUser.username)),
     ]);
 
     res.status(201).json({
@@ -724,7 +742,10 @@ export const resetPasswordStep1 = asyncHandler(async (req, res) => {
   const attempts = await redisClient.incr(resetAttemptKey);
   if (attempts === 1) await redisClient.expire(resetAttemptKey, 3600); // 1 hour
   if (attempts > 3)
-    throw new ApiError(429, "Too many password reset attempts. Try again later.");
+    throw new ApiError(
+      429,
+      "Too many password reset attempts. Try again later.",
+    );
 
   const user = await prisma.user.findFirst({
     where: {
