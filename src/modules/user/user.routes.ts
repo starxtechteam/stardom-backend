@@ -98,14 +98,6 @@ router.post("/presigned-url", generatePresignedUrl);
  *     tags: [User]
  *     security:
  *       - bearerAuth: []
- *     parameters:
- *       - in: header
- *         name: Authorization
- *         required: true
- *         schema:
- *           type: string
- *           example: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
- *         description: JWT Bearer access token
  *     responses:
  *       200:
  *         description: User profile retrieved successfully
@@ -194,14 +186,6 @@ router.get("/profile", userProfile);
  *     tags: [User]
  *     security:
  *       - bearerAuth: []
- *     parameters:
- *       - in: header
- *         name: Authorization
- *         required: true
- *         schema:
- *           type: string
- *           example: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
- *         description: JWT Bearer access token
  *     requestBody:
  *       required: true
  *       content:
@@ -411,14 +395,6 @@ router.put("/profile/banner", updateBannerUrl);
  *     tags: [User]
  *     security:
  *       - bearerAuth: []
- *     parameters:
- *       - in: header
- *         name: Authorization
- *         required: true
- *         schema:
- *           type: string
- *           example: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
- *         description: JWT Bearer access token
  *     requestBody:
  *       required: true
  *       content:
@@ -480,14 +456,6 @@ router.put("/social-links", updateSocialValidation, updateSocialMedia);
  *     tags: [User]
  *     security:
  *       - bearerAuth: []
- *     parameters:
- *       - in: header
- *         name: Authorization
- *         required: true
- *         schema:
- *           type: string
- *           example: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
- *         description: JWT Bearer access token
  *     requestBody:
  *       required: true
  *       content:
@@ -543,14 +511,6 @@ router.post("/change-email", changeEmailValidation, changeMailStep1);
  *     tags: [User]
  *     security:
  *       - bearerAuth: []
- *     parameters:
- *       - in: header
- *         name: Authorization
- *         required: true
- *         schema:
- *           type: string
- *           example: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
- *         description: JWT Bearer access token
  *     requestBody:
  *       required: true
  *       content:
@@ -606,14 +566,6 @@ router.post("/change-email/verify", changeEmailValidation2, changeMailStep2);
  *     tags: [User]
  *     security:
  *       - bearerAuth: []
- *     parameters:
- *       - in: header
- *         name: Authorization
- *         required: true
- *         schema:
- *           type: string
- *           example: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
- *         description: JWT Bearer access token
  *     requestBody:
  *       required: true
  *       content:
@@ -672,14 +624,6 @@ router.post("/change-email/update", changeEmailValidation2, changeMailStep3);
  *     tags: [User]
  *     security:
  *       - bearerAuth: []
- *     parameters:
- *       - in: header
- *         name: Authorization
- *         required: true
- *         schema:
- *           type: string
- *           example: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
- *         description: JWT Bearer access token
  *     requestBody:
  *       required: true
  *       content:
@@ -746,14 +690,6 @@ router.post("/change-password", changePasswordValidation, changePassword);
  *     tags: [User]
  *     security:
  *       - bearerAuth: []
- *     parameters:
- *       - in: header
- *         name: Authorization
- *         required: true
- *         schema:
- *           type: string
- *           example: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
- *         description: JWT Bearer access token
  *     requestBody:
  *       required: true
  *       content:
