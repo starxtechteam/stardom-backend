@@ -11,6 +11,7 @@ import {
   generatePresignedUrl,
   updateAvatarUrl,
   updateBannerUrl,
+  checkUsernameAvailability,
 } from "./user.controller.ts";
 import { verifyToken, roleAuth } from "../../middlewares/auth.ts";
 import {
@@ -19,7 +20,7 @@ import {
   changeEmailValidation,
   changeEmailValidation2,
   changePasswordValidation,
-  changePasswordVerify
+  changePasswordVerify,
 } from "./user.validation.ts";
 
 const router = express.Router();
@@ -98,14 +99,6 @@ router.post("/presigned-url", generatePresignedUrl);
  *     tags: [User]
  *     security:
  *       - bearerAuth: []
- *     parameters:
- *       - in: header
- *         name: Authorization
- *         required: true
- *         schema:
- *           type: string
- *           example: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
- *         description: JWT Bearer access token
  *     responses:
  *       200:
  *         description: User profile retrieved successfully
@@ -194,14 +187,6 @@ router.get("/profile", userProfile);
  *     tags: [User]
  *     security:
  *       - bearerAuth: []
- *     parameters:
- *       - in: header
- *         name: Authorization
- *         required: true
- *         schema:
- *           type: string
- *           example: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
- *         description: JWT Bearer access token
  *     requestBody:
  *       required: true
  *       content:
@@ -411,14 +396,6 @@ router.put("/profile/banner", updateBannerUrl);
  *     tags: [User]
  *     security:
  *       - bearerAuth: []
- *     parameters:
- *       - in: header
- *         name: Authorization
- *         required: true
- *         schema:
- *           type: string
- *           example: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
- *         description: JWT Bearer access token
  *     requestBody:
  *       required: true
  *       content:
@@ -480,14 +457,6 @@ router.put("/social-links", updateSocialValidation, updateSocialMedia);
  *     tags: [User]
  *     security:
  *       - bearerAuth: []
- *     parameters:
- *       - in: header
- *         name: Authorization
- *         required: true
- *         schema:
- *           type: string
- *           example: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
- *         description: JWT Bearer access token
  *     requestBody:
  *       required: true
  *       content:
@@ -543,14 +512,6 @@ router.post("/change-email", changeEmailValidation, changeMailStep1);
  *     tags: [User]
  *     security:
  *       - bearerAuth: []
- *     parameters:
- *       - in: header
- *         name: Authorization
- *         required: true
- *         schema:
- *           type: string
- *           example: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
- *         description: JWT Bearer access token
  *     requestBody:
  *       required: true
  *       content:
@@ -606,14 +567,6 @@ router.post("/change-email/verify", changeEmailValidation2, changeMailStep2);
  *     tags: [User]
  *     security:
  *       - bearerAuth: []
- *     parameters:
- *       - in: header
- *         name: Authorization
- *         required: true
- *         schema:
- *           type: string
- *           example: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
- *         description: JWT Bearer access token
  *     requestBody:
  *       required: true
  *       content:
@@ -672,14 +625,6 @@ router.post("/change-email/update", changeEmailValidation2, changeMailStep3);
  *     tags: [User]
  *     security:
  *       - bearerAuth: []
- *     parameters:
- *       - in: header
- *         name: Authorization
- *         required: true
- *         schema:
- *           type: string
- *           example: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
- *         description: JWT Bearer access token
  *     requestBody:
  *       required: true
  *       content:
@@ -746,14 +691,6 @@ router.post("/change-password", changePasswordValidation, changePassword);
  *     tags: [User]
  *     security:
  *       - bearerAuth: []
- *     parameters:
- *       - in: header
- *         name: Authorization
- *         required: true
- *         schema:
- *           type: string
- *           example: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
- *         description: JWT Bearer access token
  *     requestBody:
  *       required: true
  *       content:
@@ -796,5 +733,51 @@ router.post("/change-password", changePasswordValidation, changePassword);
  *         description: Too many invalid attempts (max 5)
  */
 router.post("/change-password/verify", changePasswordVerify, changePasswordVerifyOTP);
+
+/**
+ * @swagger
+ * /api/v1/user/check-username:
+ *   get:
+ *     summary: Check username availability
+ *     description: |
+ *       Check if a username is available for registration or profile update.
+ *       Returns availability status without exposing sensitive information.
+ *     tags: [User]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: username
+ *         required: true
+ *         schema:
+ *           type: string
+ *           minLength: 3
+ *           maxLength: 30
+ *         description: Username to check for availability
+ *         example: john_doe
+ *     responses:
+ *       200:
+ *         description: Username availability check completed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 available:
+ *                   type: boolean
+ *                   description: true if username is available, false if taken
+ *                 username:
+ *                   type: string
+ *                   description: Username that was checked
+ *       400:
+ *         description: Username parameter missing or invalid format
+ *       401:
+ *         description: Unauthorized - missing or invalid token
+ */
+router.get("/check-username", checkUsernameAvailability);
 
 export default router;

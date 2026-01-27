@@ -9,6 +9,7 @@ import { ENV } from "../../config/env.js";
 import type { JwtPayload } from "../../types/jwt.types.js";
 import { redisClient, REDIS_KEYS } from "../../config/redis.config.ts";
 import { AUTH_OTP } from "../../constants/auth.constants.ts";
+import { RESERVED_USERNAMES } from "../../constants/user.constants.ts";
 
 const MAX_ATTEMPTS = 5;
 const BLOCK_WINDOW_MINUTES = 15;
@@ -168,3 +169,38 @@ export const invalidateOtp = async (tokenHash: string) => {
   await redisClient.del(REDIS_KEYS.otpVerify(tokenHash));
   await redisClient.del(REDIS_KEYS.identifier(tokenHash));
 };
+
+/**
+ * Log audit events for sensitive security operations
+ * @param userId - User ID
+ * @param action - Action type (ENABLE_2FA, DISABLE_2FA, LOGOUT_ALL_DEVICES, PASSWORD_RESET, etc.)
+ * @param ipAddress - Client IP
+ * @param device - Device information
+ * @param status - success or failure
+ */
+export const logAuditEvent = async (
+  userId: string,
+  action: string,
+  ipAddress: string,
+  device: DeviceInfo,
+  status: "success" | "failure",
+): Promise<void> => {
+  try {
+    // Log to database (if audit table exists) or to console/external service
+    console.log(`[AUDIT] ${action} | User: ${userId} | IP: ${ipAddress} | Device: ${device.deviceName} | Status: ${status}`);
+    
+    // Optional: Store in database if audit table exists
+    // await prisma.auditLog.create({...})
+  } catch (err) {
+    console.error("Failed to log audit event:", err);
+  }
+};
+
+export const RESERVED_SET = new Set(
+  RESERVED_USERNAMES.map((u) => u.toLowerCase())
+);
+
+export function isReservedUsername(username: string) {
+  return RESERVED_SET.has(username.toLowerCase());
+}
+

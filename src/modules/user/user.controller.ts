@@ -5,7 +5,11 @@ import { prisma } from "../../config/prisma.config.ts";
 import { redisClient, REDIS_KEYS } from "../../config/redis.config.ts";
 import { generateOTP, verifyOTP, generateToken } from "../../utils/core.ts";
 import { changeEmailOtp } from "../../mails/user/changeEmailOTP.ts";
-import { getClientIp, hashValue } from "../auth/auth.service.ts";
+import {
+  getClientIp,
+  hashValue,
+  isReservedUsername,
+} from "../auth/auth.service.ts";
 import bcrypt from "bcryptjs";
 import { changePasswordOtp } from "../../mails/user/changePassword.ts";
 import { generateUploadURL, deleteFile } from "../../config/aws.ts";
@@ -906,3 +910,66 @@ export const changePasswordVerifyOTP = asyncHandler(async (req, res) => {
     message: "Password has been changed",
   });
 });
+
+const USERNAME_CACHE_TTL_TAKEN = 60 * 60 * 24; // 24 hours
+const USERNAME_CACHE_TTL_AVAILABLE = 60 * 10; // 10 minutes
+const USERNAME_REGEX = /^[a-z][a-z0-9_]{2,29}$/;
+
+export const checkUsernameAvailability = asyncHandler(async (req, res) => {
+  let { username } = req.query as { username?: string };
+
+  if (!username || typeof username !== "string") {
+    throw new ApiError(400, "Invalid username");
+  }
+
+  username = username.trim().toLowerCase();
+
+  if (!username) {
+    throw new ApiError(400, "Invalid username");
+  }
+
+  if (!USERNAME_REGEX.test(username)) {
+    throw new ApiError(
+      400,
+      "Username must start with a letter and contain only letters, numbers, and underscores (3–30 chars)"
+    );
+  }
+
+  if (isReservedUsername(username)) {
+    throw new ApiError(400, "Username is reserved");
+  }
+
+  const redisKey = REDIS_KEYS.usernameAvailability(username);
+
+  const cached = await redisClient.get(redisKey);
+  if (cached !== null) {
+    return res.status(200).json({
+      success: true,
+      message: cached === "1" ? "Username is available" : "Username is taken",
+      available: cached === "1",
+      cached: true,
+    });
+  }
+
+  const existing = await prisma.user.findFirst({
+    where: { username },
+    select: { id: true },
+  });
+
+  const available = !existing;
+
+  await redisClient.set(redisKey, available ? "1" : "0", {
+    EX: available
+      ? USERNAME_CACHE_TTL_AVAILABLE
+      : USERNAME_CACHE_TTL_TAKEN,
+    NX: true,
+  });
+
+  return res.status(200).json({
+    success: true,
+    message: available ? "Username is available" : "Username is taken",
+    available,
+    cached: false,
+  });
+});
+

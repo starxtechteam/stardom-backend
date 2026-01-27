@@ -31,6 +31,7 @@ import {
   verifyRefreshToken,
   signRefreshToken,
   signAccessToken,
+  isReservedUsername,
 } from "./auth.service.ts";
 import type { LoginAttempts } from "../../types/auth.types.ts";
 
@@ -39,8 +40,19 @@ export const registerStep1 = asyncHandler(
     req: Request<{}, {}, { username: string; email: string; password: string }>,
     res: Response,
   ) => {
-    const { username, email, password } = req.body;
+    let { username, email, password } = req.body;
+    username = username.trim().toLowerCase();
+    email = email.trim().toLowerCase();
     const ip = getClientIp(req);
+
+    if (isReservedUsername(username)) {
+      throw new ApiError(400, "Username is not allowed");
+    }
+
+    const isAvailable = await redisClient.get(REDIS_KEYS.usernameAvailability(username));
+    if (isAvailable === "0") {
+      throw new ApiError(409, "Username already exists");
+    }
 
     const registerAttemptKey = `rate_limit:register:${ip}`;
     const attempts = await redisClient.incr(registerAttemptKey);
@@ -48,6 +60,7 @@ export const registerStep1 = asyncHandler(
     if (attempts > 10)
       throw new ApiError(429, "Too many registration attempts");
 
+    // Optimize: use select to only check existence
     const existingUser = await prisma.user.findFirst({
       where: { OR: [{ username }, { email }] },
       select: { id: true },
@@ -64,6 +77,7 @@ export const registerStep1 = asyncHandler(
     const userPayload = { username, email, password: passwordHash };
     const EXPIRES_IN = AUTH_OTP.EXPIRES_IN;
 
+    // Batch operations: use Promise.all for non-dependent writes
     await Promise.all([
       redisClient.set(
         REDIS_KEYS.userTemp(tokenHash),
@@ -73,7 +87,6 @@ export const registerStep1 = asyncHandler(
       redisClient.set(REDIS_KEYS.registerOtp(token), otpHash, {
         EX: EXPIRES_IN,
       }),
-
       prisma.tokenHash.create({
         data: { token, tokenHash, userIp: ip },
       }),
@@ -83,6 +96,11 @@ export const registerStep1 = asyncHandler(
     if (!emailSent) {
       throw new ApiError(400, "Something went wrong. Please try again later");
     }
+
+    await redisClient.set(REDIS_KEYS.usernameAvailability(username), "0", {
+      EX: 600,
+      NX: true,
+    });
 
     res.status(200).json({
       success: true,
@@ -161,9 +179,9 @@ export const registerStep2 = asyncHandler(
 
     const userprofile = await prisma.userProfile.create({
       data: {
-        userId: newUser.id
-      }
-    })
+        userId: newUser.id,
+      },
+    });
 
     const { password: _, ...userWithoutPassword } = newUser;
 
@@ -173,6 +191,7 @@ export const registerStep2 = asyncHandler(
       redisClient.del(verifyLimitKey),
       prisma.tokenHash.deleteMany({ where: { token } }),
       sendWelcomeEmail({ email: user.email, name: user.username }),
+      redisClient.del(REDIS_KEYS.usernameAvailability(newUser.username)),
     ]);
 
     res.status(201).json({
@@ -350,7 +369,8 @@ export const login = asyncHandler(
 
     res.status(202).json({
       success: true,
-      message: "Two-factor authentication is now enabled. We've sent an OTP to your registered email.",
+      message:
+        "Two-factor authentication is now enabled. We've sent an OTP to your registered email.",
       authentication: true,
       token,
     });
@@ -695,7 +715,7 @@ export const refreshTokenHandler = asyncHandler(async (req, res) => {
       data: {
         ipAddress: ip,
         refreshTokenHash: newRefreshHash,
-        previousTokenHash: refreshToken,
+        previousTokenHash: refreshHash, // Store hash, not plaintext
         expiresAt: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000),
       },
     }),
@@ -715,15 +735,28 @@ export const refreshTokenHandler = asyncHandler(async (req, res) => {
 
 export const resetPasswordStep1 = asyncHandler(async (req, res) => {
   const { emailOrUsername } = req.body;
+  const ip = getClientIp(req);
+
+  // Add rate limiting per user/email per hour (3 attempts max)
+  const resetAttemptKey = `rate_limit:reset_password:${emailOrUsername}:${ip}`;
+  const attempts = await redisClient.incr(resetAttemptKey);
+  if (attempts === 1) await redisClient.expire(resetAttemptKey, 3600); // 1 hour
+  if (attempts > 3)
+    throw new ApiError(
+      429,
+      "Too many password reset attempts. Try again later.",
+    );
 
   const user = await prisma.user.findFirst({
     where: {
       OR: [{ email: emailOrUsername }, { username: emailOrUsername }],
     },
+    select: { id: true, email: true, status: true },
   });
 
-  if (!user) throw new ApiError(400, "Invalid username or email");
-  if (user.status !== "active") throw new ApiError(403, `Account ${user.status}`);
+  if (!user) throw new ApiError(404, "User not found");
+  if (user.status !== "active")
+    throw new ApiError(403, `Account ${user.status}`);
 
   const existingOtp = await prisma.userOtp.findFirst({
     where: {
@@ -731,6 +764,7 @@ export const resetPasswordStep1 = asyncHandler(async (req, res) => {
       purpose: "RESET_PASSWORD",
       expiresAt: { gt: new Date() },
     },
+    select: { id: true },
   });
 
   if (existingOtp) {
@@ -774,11 +808,9 @@ export const resetPasswordStep1 = asyncHandler(async (req, res) => {
   ]);
 
   // Store token only (no IP binding)
-  await redisClient.set(
-    REDIS_KEYS.resetPassword(token),
-    user.id.toString(),
-    { EX: 5 * 60 }
-  );
+  await redisClient.set(REDIS_KEYS.resetPassword(token), user.id.toString(), {
+    EX: 5 * 60,
+  });
 
   return res.status(200).json({
     success: true,
@@ -834,7 +866,7 @@ export const resetPasswordStep2 = asyncHandler(async (req, res) => {
     redisClient.set(
       REDIS_KEYS.resetPassword(newToken),
       resetToken.userId.toString(),
-      { EX: 5 * 60 * 60 }
+      { EX: 5 * 60 * 60 },
     ),
   ]);
 
@@ -867,9 +899,10 @@ export const resetPasswordStep3 = asyncHandler(async (req, res) => {
   });
 
   if (!user) throw new ApiError(404, "User not found");
-  if (user.status !== "active") throw new ApiError(403, `Account ${user.status}`);
+  if (user.status !== "active")
+    throw new ApiError(403, `Account ${user.status}`);
 
-  if(await bcrypt.compare(password, user.password)){
+  if (await bcrypt.compare(password, user.password)) {
     throw new ApiError(400, "Choose different password");
   }
 
@@ -893,3 +926,76 @@ export const resetPasswordStep3 = asyncHandler(async (req, res) => {
   });
 });
 
+export const logout = asyncHandler(async (req, res) => {
+  const session = req.session;
+  const token = session?.token;
+  const userId = session?.userId;
+  const sessionId = session?.id;
+
+  if (!userId || !sessionId || !token) {
+    throw new ApiError(400, "Invalid logout request");
+  }
+
+  // Verify session exists before deleting
+  const existingSession = await prisma.userSession.findUnique({
+    where: { id: sessionId },
+    select: { id: true, userId: true },
+  });
+
+  if (!existingSession || existingSession.userId !== userId) {
+    throw new ApiError(403, "Session mismatch");
+  }
+
+  await Promise.all([
+    prisma.userSession.deleteMany({
+      where: { id: sessionId, userId: userId },
+    }),
+    redisClient.set(REDIS_KEYS.blacklistToken(token), "1", {
+      EX: 60 * 60 * 24 * 7,
+    }), // 7 days
+    redisClient.del(REDIS_KEYS.userdata(userId)),
+  ]);
+
+  res.status(200).json({
+    success: true,
+    message: "Logged out successfully",
+  });
+});
+
+export const logoutAllDevices = asyncHandler(async (req, res) => {
+  const session = req.session;
+  const token = session?.token;
+  const userId = session?.userId;
+
+  if (!userId || !token) {
+    throw new ApiError(400, "Invalid logout request");
+  }
+
+  // Verify user exists and is active
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, status: true },
+  });
+
+  if (!user || user.status !== "active") {
+    throw new ApiError(403, "Invalid user");
+  }
+
+  // Delete all sessions for this user
+  await prisma.userSession.deleteMany({
+    where: { userId: userId },
+  });
+
+  // Blacklist current token
+  await Promise.all([
+    redisClient.set(REDIS_KEYS.blacklistToken(token), "1", {
+      EX: 60 * 60 * 24 * 7,
+    }), // 7 days
+    redisClient.del(REDIS_KEYS.userdata(userId)),
+  ]);
+
+  res.status(200).json({
+    success: true,
+    message: "Logged out from all devices successfully",
+  });
+});

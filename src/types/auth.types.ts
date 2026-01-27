@@ -18,5 +18,6 @@ export type AuthSession = {
   deviceName: string | null,
   ipAddress: string | null,
   userAgent: string | null,
-  role: "user" | "admin"
+  role: "user" | "admin",
+  token: string,
 }

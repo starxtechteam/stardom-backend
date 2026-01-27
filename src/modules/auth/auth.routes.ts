@@ -12,6 +12,8 @@ import {
   resetPasswordStep1,
   resetPasswordStep2,
   resetPasswordStep3,
+  logout,
+  logoutAllDevices,
 } from "./auth.controller.js";
 import {
   registerValidation,
@@ -502,5 +504,55 @@ router.post(
   verify2FAValidate,
   verify2FAOTP,
 );
+
+/**
+ * @swagger
+ * /api/v1/auth/logout:
+ *   post:
+ *     summary: Logout from current device
+ *     description: Logout the user from the current device and invalidate the current session
+ *     tags: [Authentication]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Logged out successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Logged out successfully
+ *       401:
+ *         description: Unauthorized - invalid or missing token
+ */
+router.post("/logout", logout);
+
+/**
+ * @swagger
+ * /api/v1/auth/logout/all-devices:
+ *   post:
+ *     summary: Logout from all devices
+ *     description: Logout the user from all devices and invalidate all active sessions
+ *     tags: [Authentication]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Logged out from all devices successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Logged out from all devices successfully
+ *       401:
+ *         description: Unauthorized - invalid or missing token
+ */
+router.post("/logout/all-devices", logoutAllDevices);
 
 export default router;

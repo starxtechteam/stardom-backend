@@ -17,6 +17,7 @@ export const REDIS_KEYS = {
 
   // user data cache
   userdata: (userId: string) => `user:profile:${userId}`,
+  usernameAvailability: (username: string) => `username:availability:${username}`,
 };
 
 export const REG_IP_KEY = (ip: string) => `register:ip:${ip}`;
