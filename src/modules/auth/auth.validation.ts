@@ -12,17 +12,20 @@ const usernameSchema = z.object({
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const registerSchema = usernameSchema.extend({
-  email: z.email('Email is required').toLowerCase().trim(),
+  email: z.email('Email is required').trim().toLowerCase(),
   password: z
     .string("Password is required")
     .min(8, "Password must be at least 8 characters long")
+    .max(50, "Password maximum 50 characters")
+    .trim()
     .regex(
       /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/,
       "Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character"
     ),
   confirmPassword: z
     .string("Password confirmation is required")
-    .min(1, "Password confirmation is required"),
+    .min(1, "Password confirmation is required")
+    .trim()
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Passwords do not match",
   path: ["confirmPassword"],
@@ -93,6 +96,19 @@ const resetPassword = tokenSchema.extend({
   path: ["confirmPassword"],
 });
 
+const disable2FASchema = z.object({
+  password: z
+    .string("Password is required")
+    .min(8, "Password must be at least 8 characters long")
+    .max(50, "Password maximum 50 characters")
+    .trim()
+})
+
+const accountDeletion = z.object({
+  password: z.string().max(50, ""),
+  reason: z.string().min(10, "Minimum 10 chacr").max(100, "")
+})
+
 export const registerValidation = validationInput(registerSchema);
 export const authVerify = validationInput(verifyAuthSchema);
 
@@ -105,3 +121,5 @@ export const refreshTokenValidate = validationInput(tokenSchema);
 export const resetPasswordValidate1 = validationInput(resetToken);
 export const resetPasswordValidate2 = validationInput(resetPasswordOtp);
 export const resetPasswordValidate3 = validationInput(resetPassword);
+export const disable2FAValidation = validationInput(disable2FASchema);
+export const accountValidation = validationInput(accountDeletion);

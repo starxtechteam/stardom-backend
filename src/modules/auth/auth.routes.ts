@@ -7,6 +7,7 @@ import {
   loginOTPVerify,
   enableOTPbasedLogin,
   verify2FAOTP,
+  disableOTPbasedLogin,
   resendLoginOTP,
   refreshTokenHandler,
   resetPasswordStep1,
@@ -14,6 +15,9 @@ import {
   resetPasswordStep3,
   logout,
   logoutAllDevices,
+  activeSessions,
+  deleteAccount,
+  recoverAccount,
 } from "./auth.controller.js";
 import {
   registerValidation,
@@ -21,10 +25,11 @@ import {
   loginValidate,
   tokenValidate,
   verify2FAValidate,
-  refreshTokenValidate,
   resetPasswordValidate1,
   resetPasswordValidate2,
   resetPasswordValidate3,
+  disable2FAValidation,
+  accountValidation,
 } from "./auth.validation.ts";
 import { authRateLimit } from "../../middlewares/ratelimit.ts";
 
@@ -507,6 +512,61 @@ router.post(
 
 /**
  * @swagger
+ * /api/v1/auth/2fa/disable:
+ *   post:
+ *     summary: Disable 2FA OTP based login
+ *     description: Disable two-factor authentication for the authenticated user. Password verification required for security.
+ *     tags: [Authentication, 2FA]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: header
+ *         name: Authorization
+ *         required: true
+ *         schema:
+ *           type: string
+ *           example: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+ *         description: JWT Bearer access token
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - password
+ *             properties:
+ *               password:
+ *                 type: string
+ *                 format: password
+ *                 description: User's current password for verification
+ *                 example: SecurePass123!
+ *     responses:
+ *       200:
+ *         description: 2FA OTP disabled successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                   example: OTP-based login disabled successfully
+ *       400:
+ *         description: Invalid password or 2FA not enabled
+ *       401:
+ *         description: Unauthorized - invalid or missing token
+ *       403:
+ *         description: Account not active
+ *       404:
+ *         description: User not found
+ */
+router.post("/2fa/disable", disable2FAValidation, disableOTPbasedLogin);
+
+/**
+ * @swagger
  * /api/v1/auth/logout:
  *   post:
  *     summary: Logout from current device
@@ -554,5 +614,199 @@ router.post("/logout", logout);
  *         description: Unauthorized - invalid or missing token
  */
 router.post("/logout/all-devices", logoutAllDevices);
+
+/**
+ * @swagger
+ * /api/v1/auth/sessions:
+ *   get:
+ *     summary: Get all active sessions
+ *     description: |
+ *       Retrieve a list of all active sessions for the authenticated user.
+ *       Shows device information, IP addresses, login times, and session expiration times.
+ *       Useful for security monitoring and managing multiple logins.
+ *     tags: [Authentication]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Active sessions retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 sessions:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                         description: Session ID
+ *                       deviceName:
+ *                         type: string
+ *                         description: Device name or model (e.g., iPhone 12, Dell XPS)
+ *                       userAgent:
+ *                         type: string
+ *                         description: Device type (e.g., mobile, tablet, desktop)
+ *                       ipAddress:
+ *                         type: string
+ *                         format: ipv4
+ *                         description: IP address of the device
+ *                       createdAt:
+ *                         type: string
+ *                         format: date-time
+ *                         description: Session creation timestamp
+ *                       expiresAt:
+ *                         type: string
+ *                         format: date-time
+ *                         description: Session expiration timestamp
+ *                       isCurrent:
+ *                         type: boolean
+ *                         description: Indicates if this is the current session
+ *       401:
+ *         description: Unauthorized - invalid or missing token
+ *       404:
+ *         description: User not found
+ */
+router.get("/sessions", activeSessions);
+
+/**
+ * @swagger
+ * /api/v1/auth/user/delete/account:
+ *   delete:
+ *     summary: Delete user account
+ *     description: |
+ *       Permanently delete the authenticated user's account and all associated data.
+ *       This is an irreversible action that will:
+ *       - Remove all user data from the database
+ *       - Invalidate all active sessions
+ *       - Remove all user-generated content and records
+ *       - Password verification required for security confirmation
+ *     tags: [Authentication, Account]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: header
+ *         name: Authorization
+ *         required: true
+ *         schema:
+ *           type: string
+ *           example: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+ *         description: JWT Bearer access token
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - password
+ *               - reason
+ *             properties:
+ *               password:
+ *                 type: string
+ *                 format: password
+ *                 description: User's current password for verification (required for security)
+ *                 example: SecurePass123!
+ *               reason:
+ *                 type: string
+ *                 description: Reason for account deletion (feedback for improvement)
+ *                 example: No longer using the platform
+ *     responses:
+ *       200:
+ *         description: Account deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                   example: Account deleted successfully
+ *       400:
+ *         description: Invalid password or missing required fields
+ *       401:
+ *         description: Unauthorized - invalid or missing token
+ *       403:
+ *         description: Account not active
+ *       404:
+ *         description: User not found
+ */
+router.delete("/user/delete/account", accountValidation, deleteAccount);
+
+/**
+ * @swagger
+ * /api/v1/auth/user/recover/account:
+ *   delete:
+ *     summary: Recover deleted user account
+ *     description: |
+ *       Recover a previously deleted account within the recovery window (typically 30 days).
+ *       This action will:
+ *       - Restore the user account to active status
+ *       - Recover associated user data
+ *       - Re-enable access to all account features
+ *       - Password verification required for security confirmation
+ *       
+ *       **Note:** Account recovery is only possible within a limited time window after deletion.
+ *     tags: [Authentication, Account]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: header
+ *         name: Authorization
+ *         required: true
+ *         schema:
+ *           type: string
+ *           example: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+ *         description: JWT Bearer access token (if user still has valid token)
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - password
+ *               - reason
+ *             properties:
+ *               password:
+ *                 type: string
+ *                 format: password
+ *                 description: User's current password for verification (required for security)
+ *                 example: SecurePass123!
+ *               reason:
+ *                 type: string
+ *                 description: Reason for account recovery (feedback for improvement)
+ *                 example: No longer using the platform
+ *     responses:
+ *       200:
+ *         description: Account recovered successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                   example: Account recovered successfully
+ *       400:
+ *         description: Invalid credentials or recovery window expired
+ *       401:
+ *         description: Unauthorized - invalid or missing token
+ *       404:
+ *         description: Account not found or already permanently deleted
+ *       410:
+ *         description: Recovery period expired - account cannot be recovered
+ */
+router.delete("/user/recover/account", accountValidation, recoverAccount);
 
 export default router;

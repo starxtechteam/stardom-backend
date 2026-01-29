@@ -21,3 +21,11 @@ export type AuthSession = {
   role: "user" | "admin",
   token: string,
 }
+
+export type Device = {
+  name: string
+  type: string
+  os: string
+  browser: string
+  ip?: string
+}
