@@ -17,6 +17,7 @@ import {
   logoutAllDevices,
   activeSessions,
   deleteAccount,
+  recoverAccount,
 } from "./auth.controller.js";
 import {
   registerValidation,
@@ -28,6 +29,7 @@ import {
   resetPasswordValidate2,
   resetPasswordValidate3,
   disable2FAValidation,
+  accountValidation,
 } from "./auth.validation.ts";
 import { authRateLimit } from "../../middlewares/ratelimit.ts";
 
@@ -704,12 +706,17 @@ router.get("/sessions", activeSessions);
  *             type: object
  *             required:
  *               - password
+ *               - reason
  *             properties:
  *               password:
  *                 type: string
  *                 format: password
  *                 description: User's current password for verification (required for security)
  *                 example: SecurePass123!
+ *               reason:
+ *                 type: string
+ *                 description: Reason for account deletion (feedback for improvement)
+ *                 example: No longer using the platform
  *     responses:
  *       200:
  *         description: Account deleted successfully
@@ -732,6 +739,74 @@ router.get("/sessions", activeSessions);
  *       404:
  *         description: User not found
  */
-router.delete("/user/delete/account", deleteAccount);
+router.delete("/user/delete/account", accountValidation, deleteAccount);
+
+/**
+ * @swagger
+ * /api/v1/auth/user/recover/account:
+ *   delete:
+ *     summary: Recover deleted user account
+ *     description: |
+ *       Recover a previously deleted account within the recovery window (typically 30 days).
+ *       This action will:
+ *       - Restore the user account to active status
+ *       - Recover associated user data
+ *       - Re-enable access to all account features
+ *       - Password verification required for security confirmation
+ *       
+ *       **Note:** Account recovery is only possible within a limited time window after deletion.
+ *     tags: [Authentication, Account]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: header
+ *         name: Authorization
+ *         required: true
+ *         schema:
+ *           type: string
+ *           example: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+ *         description: JWT Bearer access token (if user still has valid token)
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - password
+ *               - reason
+ *             properties:
+ *               password:
+ *                 type: string
+ *                 format: password
+ *                 description: User's current password for verification (required for security)
+ *                 example: SecurePass123!
+ *               reason:
+ *                 type: string
+ *                 description: Reason for account recovery (feedback for improvement)
+ *                 example: No longer using the platform
+ *     responses:
+ *       200:
+ *         description: Account recovered successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                   example: Account recovered successfully
+ *       400:
+ *         description: Invalid credentials or recovery window expired
+ *       401:
+ *         description: Unauthorized - invalid or missing token
+ *       404:
+ *         description: Account not found or already permanently deleted
+ *       410:
+ *         description: Recovery period expired - account cannot be recovered
+ */
+router.delete("/user/recover/account", accountValidation, recoverAccount);
 
 export default router;

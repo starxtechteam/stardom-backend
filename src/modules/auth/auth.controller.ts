@@ -38,6 +38,7 @@ import { addDays } from "date-fns";
 import { ACCOUNT_DELETION_GRACE_DAYS } from "../../constants/user.constants.ts";
 import { sendAccountDeletionScheduledEmail } from "../../mails/user/AccountDeletionScheduledEmail.ts";
 import { formatUTCDate } from "../../utils/core.ts";
+import { sendAccountRecoveryEmail } from "../../mails/user/sendAccountRecoveryEmail.ts";
 
 export const registerStep1 = asyncHandler(
   async (
@@ -1182,5 +1183,80 @@ export const deleteAccount = asyncHandler(async (req, res) => {
     message:
       "Your account is scheduled for deletion. You can recover it within 30 days by logging back in.",
     scheduledAt,
+  });
+});
+
+export const recoverAccount = asyncHandler(async (req, res) => {
+  const session = req.session;
+  const userId = session?.userId;
+  const { password, reason } = req.body;
+
+  if (!userId) {
+    throw new ApiError(401, "Unauthorized");
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      email: true,
+      status: true,
+      password: true,
+    },
+  });
+
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  if (!(await bcrypt.compare(password, user.password))) {
+    throw new ApiError(400, "Invaild Password");
+  }
+
+  if (user.status !== "active") {
+    throw new ApiError(400, `Account is ${user.status}`);
+  }
+
+  const deletionSchedule = await prisma.deletionSchedule.findUnique({
+    where: { userId },
+  });
+
+  if (!deletionSchedule || deletionSchedule.status !== "PENDING") {
+    throw new ApiError(400, "No active deletion schedule found");
+  }
+
+  const device = getDeviceInfo(req);
+
+  await Promise.all([
+    prisma.deletionSchedule.update({
+      where: { userId },
+      data: {
+        status: "RECOVERED",
+        recoveredAt: new Date(),
+        reason: reason,
+      },
+    }),
+
+    prisma.userSession.deleteMany({
+      where: { userId },
+    }),
+
+    redisClient.del(REDIS_KEYS.userdata(userId)),
+
+    sendAccountRecoveryEmail({
+      email: user.email,
+      device: {
+        name: device.deviceName ?? "Unknown device",
+        type: device.deviceType ?? "Unknown type",
+        os: device.os ?? "Unknown OS",
+        browser: device.browser ?? "Unknown browser",
+      },
+      recoveredAt: formatUTCDate(new Date())
+    }),
+  ]);
+
+  return res.status(200).json({
+    success: true,
+    message: "Your account has been successfully recovered",
   });
 });
