@@ -106,9 +106,40 @@ model User {
   following Follow[] @relation("Following")
 
   tokenHashes TokenHash[]
+  deletionSchedule DeletionSchedule[]
 
   @@index([id], map: "idx_active_users")
 }
+
+enum DeletionStatus {
+  PENDING     // deletion requested, waiting for grace period
+  RECOVERED   // user logged back in and canceled deletion
+  DELETED     // account permanently deleted
+}
+
+
+model DeletionSchedule {
+  id        String   @id @default(uuid()) @db.Uuid
+
+  userId    String   @unique @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  status    DeletionStatus @default(PENDING)
+
+  requestedAt  DateTime @default(now())
+  scheduledAt  DateTime
+
+  recoveredAt  DateTime?
+  deletedAt    DateTime?
+
+  reason       String?   @db.VarChar(255)
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([status, scheduledAt])
+}
+
 
 model TokenHash {
   id  String @id @default(uuid()) @db.Uuid

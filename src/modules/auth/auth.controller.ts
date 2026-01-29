@@ -34,6 +34,10 @@ import {
   isReservedUsername,
 } from "./auth.service.ts";
 import type { LoginAttempts } from "../../types/auth.types.ts";
+import { addDays } from "date-fns";
+import { ACCOUNT_DELETION_GRACE_DAYS } from "../../constants/user.constants.ts";
+import { sendAccountDeletionScheduledEmail } from "../../mails/user/AccountDeletionScheduledEmail.ts";
+import { formatUTCDate } from "../../utils/core.ts";
 
 export const registerStep1 = asyncHandler(
   async (
@@ -49,7 +53,9 @@ export const registerStep1 = asyncHandler(
       throw new ApiError(400, "Username is not allowed");
     }
 
-    const isAvailable = await redisClient.get(REDIS_KEYS.usernameAvailability(username));
+    const isAvailable = await redisClient.get(
+      REDIS_KEYS.usernameAvailability(username),
+    );
     if (isAvailable === "0") {
       throw new ApiError(409, "Username already exists");
     }
@@ -675,22 +681,22 @@ export const disableOTPbasedLogin = asyncHandler(async (req, res) => {
   }
 
   const user = await prisma.user.findUnique({
-    where: {id: userId},
+    where: { id: userId },
   });
 
-  if(!user){
+  if (!user) {
     throw new ApiError(404, "user not found");
   }
 
-  if(user.status !== "active"){
+  if (user.status !== "active") {
     throw new ApiError(403, `Account is ${user.status}`);
   }
 
-  if(!(await bcrypt.compare(password, user.password))){
+  if (!(await bcrypt.compare(password, user.password))) {
     throw new ApiError(400, "Invaild Credentials");
   }
 
-  await prisma.userTotp.updateMany({  
+  await prisma.userTotp.updateMany({
     where: { userId },
     data: { enabled: false },
   });
@@ -1065,5 +1071,116 @@ export const activeSessions = asyncHandler(async (req, res) => {
   res.status(200).json({
     success: true,
     sessions: resultSessions,
+  });
+});
+
+export const deleteAccount = asyncHandler(async (req, res) => {
+  const session = req.session;
+  const userId = session?.userId;
+  const token = session?.token;
+  const { password, reason } = req.body;
+
+  if (!userId || !token) {
+    throw new ApiError(401, "Unauthorized");
+  }
+
+  if (!password || typeof password !== "string") {
+    throw new ApiError(400, "Password is required");
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      password: true,
+      email: true,
+      status: true,
+      createdAt: true,
+    },
+  });
+
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  const ACCOUNT_DELETE_COOLDOWN_HOURS = 24; // 24 hours
+  const accountAgeMs = Date.now() - user.createdAt.getTime();
+  const hoursSinceCreation = accountAgeMs / (1000 * 60 * 60);
+
+  if (hoursSinceCreation < ACCOUNT_DELETE_COOLDOWN_HOURS) {
+    throw new ApiError(
+      403,
+      "Account deletion is allowed only after 24 hours of account creation",
+    );
+  }
+
+  if (user.status === "deleted") {
+    throw new ApiError(400, "Account already deleted");
+  }
+
+  // 🔹 Verify password (prevents deletion from stolen session)
+  const isValidPassword = await bcrypt.compare(password, user.password);
+  if (!isValidPassword) {
+    throw new ApiError(401, "Invalid password");
+  }
+
+  // 🔹 Check if deletion already scheduled
+  const existingSchedule = await prisma.deletionSchedule.findUnique({
+    where: { userId },
+  });
+
+  if (existingSchedule?.status === "PENDING") {
+    throw new ApiError(400, "Account deletion is already in progress");
+  }
+
+  const scheduledAt = addDays(new Date(), ACCOUNT_DELETION_GRACE_DAYS);
+
+  // 🔹 Create or update deletion schedule
+  await prisma.deletionSchedule.upsert({
+    where: { userId },
+    update: {
+      status: "PENDING",
+      requestedAt: new Date(),
+      scheduledAt,
+      recoveredAt: null,
+      deletedAt: null,
+      reason: reason || null,
+    },
+    create: {
+      userId,
+      status: "PENDING",
+      scheduledAt,
+      reason: reason || null,
+    },
+  });
+
+  await Promise.all([
+    // Invalidate all sessions
+    prisma.userSession.deleteMany({
+      where: { userId },
+    }),
+
+    // Clear cached user data
+    redisClient.del(REDIS_KEYS.userdata(userId)),
+  ]);
+
+  const device = getDeviceInfo(req);
+
+  sendAccountDeletionScheduledEmail({
+    email: user.email,
+    requestedAt: formatUTCDate(new Date()),
+    device: {
+      name: device.deviceName ?? "Unknown device",
+      type: device.deviceType ?? "Unknown type",
+      os: device.os ?? "Unknown OS",
+      browser: device.browser ?? "Unknown browser",
+    },
+  }).catch(() => {});
+
+  return res.status(200).json({
+    success: true,
+    message:
+      "Your account is scheduled for deletion. You can recover it within 30 days by logging back in.",
+    scheduledAt,
   });
 });

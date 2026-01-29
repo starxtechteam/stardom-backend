@@ -16,6 +16,7 @@ import {
   logout,
   logoutAllDevices,
   activeSessions,
+  deleteAccount,
 } from "./auth.controller.js";
 import {
   registerValidation,
@@ -671,5 +672,66 @@ router.post("/logout/all-devices", logoutAllDevices);
  *         description: User not found
  */
 router.get("/sessions", activeSessions);
+
+/**
+ * @swagger
+ * /api/v1/auth/user/delete/account:
+ *   delete:
+ *     summary: Delete user account
+ *     description: |
+ *       Permanently delete the authenticated user's account and all associated data.
+ *       This is an irreversible action that will:
+ *       - Remove all user data from the database
+ *       - Invalidate all active sessions
+ *       - Remove all user-generated content and records
+ *       - Password verification required for security confirmation
+ *     tags: [Authentication, Account]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: header
+ *         name: Authorization
+ *         required: true
+ *         schema:
+ *           type: string
+ *           example: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+ *         description: JWT Bearer access token
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - password
+ *             properties:
+ *               password:
+ *                 type: string
+ *                 format: password
+ *                 description: User's current password for verification (required for security)
+ *                 example: SecurePass123!
+ *     responses:
+ *       200:
+ *         description: Account deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                   example: Account deleted successfully
+ *       400:
+ *         description: Invalid password or missing required fields
+ *       401:
+ *         description: Unauthorized - invalid or missing token
+ *       403:
+ *         description: Account not active
+ *       404:
+ *         description: User not found
+ */
+router.delete("/user/delete/account", deleteAccount);
 
 export default router;

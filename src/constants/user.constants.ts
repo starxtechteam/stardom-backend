@@ -152,3 +152,6 @@ export const RESERVED_USERNAMES = [
   "documentation",
   "faq",
 ];
+
+export const ACCOUNT_DELETION_GRACE_DAYS = 30;
+export const TOKEN_TTL_SECONDS = 60 * 60 * 24 * 30; // 30 days

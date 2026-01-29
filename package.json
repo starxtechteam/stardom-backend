@@ -13,7 +13,7 @@
     "prisma:migrate:reset": "prisma migrate reset",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
-    "aws:delete" : "node ./src/scripts/aws.scripts.ts"
+    "aws:delete": "node ./src/scripts/aws.scripts.ts"
   },
   "repository": {
     "type": "git",
@@ -42,7 +42,7 @@
     "@types/swagger-ui-express": "^4.1.8",
     "@types/ua-parser-js": "^0.7.39",
     "dotenv": "^17.2.3",
-    "prisma": "^7.2.0",
+    "prisma": "^7.3.0",
     "ts-node-dev": "^2.0.0",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"
@@ -52,12 +52,13 @@
     "@aws-sdk/client-s3": "^3.975.0",
     "@aws-sdk/s3-request-presigner": "^3.975.0",
     "@prisma/adapter-pg": "^7.2.0",
-    "@prisma/client": "^7.2.0",
+    "@prisma/client": "^7.3.0",
     "axios": "^1.13.2",
     "bcryptjs": "^3.0.3",
     "chalk": "^5.6.2",
     "compression": "^1.8.1",
     "cors": "^2.8.5",
+    "date-fns": "^4.1.0",
     "dompurify": "^3.3.1",
     "ejs": "^3.1.10",
     "express": "^5.2.1",
