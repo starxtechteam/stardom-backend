@@ -12,6 +12,11 @@ import {
   updateAvatarUrl,
   updateBannerUrl,
   checkUsernameAvailability,
+  followUser,
+  unfollowUser,
+  getFollowers,
+  getFollowing,
+  isFollowing,
 } from "./user.controller.ts";
 import { verifyToken, roleAuth } from "../../middlewares/auth.ts";
 import {
@@ -21,6 +26,7 @@ import {
   changeEmailValidation2,
   changePasswordValidation,
   changePasswordVerify,
+  followUserValidation,
 } from "./user.validation.ts";
 
 const router = express.Router();
@@ -779,5 +785,276 @@ router.post("/change-password/verify", changePasswordVerify, changePasswordVerif
  *         description: Unauthorized - missing or invalid token
  */
 router.get("/check-username", checkUsernameAvailability);
+
+/**
+ * @swagger
+ * /api/v1/user/{userId}/follow:
+ *   post:
+ *     summary: Follow a user
+ *     description: |
+ *       Follow the user identified by `userId`.
+ *       The authenticated user will start following the target user.
+ *     tags: [User]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID of the user to follow
+ *     responses:
+ *       200:
+ *         description: Followed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 followingCount:
+ *                   type: integer
+ *                   description: Updated following count for the authenticated user
+ *       400:
+ *         description: Invalid userId or cannot follow yourself
+ *       401:
+ *         description: Unauthorized - missing or invalid token
+ *       404:
+ *         description: Target user not found
+ *       409:
+ *         description: Already following the user
+ */
+router.post("/:userId/follow", followUserValidation, followUser);
+
+/**
+ * @swagger
+ * /api/v1/user/{userId}/unfollow:
+ *   delete:
+ *     summary: Unfollow a user
+ *     description: |
+ *       Unfollow the user identified by `userId`.
+ *       Removes the following relationship if it exists.
+ *     tags: [User]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID of the user to unfollow
+ *     responses:
+ *       200:
+ *         description: Unfollowed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 followingCount:
+ *                   type: integer
+ *                   description: Updated following count for the authenticated user
+ *       400:
+ *         description: Invalid userId or cannot unfollow yourself
+ *       401:
+ *         description: Unauthorized - missing or invalid token
+ *       404:
+ *         description: Target user not found
+ */
+router.delete("/:userId/unfollow", followUserValidation, unfollowUser);
+
+/**
+ * @swagger
+ * /api/v1/user/{userId}/followers:
+ *   get:
+ *     summary: Get a user's followers
+ *     description: |
+ *       Retrieve a paginated list of users following the specified user.
+ *       Returns minimal public profile info for each follower.
+ *     tags: [User]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID of the user whose followers to retrieve
+ *       - in: query
+ *         name: page
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *     responses:
+ *       200:
+ *         description: Followers retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     items:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: string
+ *                           username:
+ *                             type: string
+ *                           avatarUrl:
+ *                             type: string
+ *                             format: uri
+ *                     page:
+ *                       type: integer
+ *                     limit:
+ *                       type: integer
+ *                     total:
+ *                       type: integer
+ *       400:
+ *         description: Invalid parameters
+ *       401:
+ *         description: Unauthorized - missing or invalid token
+ *       404:
+ *         description: User not found
+ */
+router.get("/:userId/followers", followUserValidation, getFollowers);
+
+/**
+ * @swagger
+ * /api/v1/user/{userId}/following:
+ *   get:
+ *     summary: Get users followed by a user
+ *     description: |
+ *       Retrieve a paginated list of users the specified user is following.
+ *       Returns minimal public profile info for each followed user.
+ *     tags: [User]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID of the user whose following list to retrieve
+ *       - in: query
+ *         name: page
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *     responses:
+ *       200:
+ *         description: Following list retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     items:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: string
+ *                           username:
+ *                             type: string
+ *                           avatarUrl:
+ *                             type: string
+ *                             format: uri
+ *                     page:
+ *                       type: integer
+ *                     limit:
+ *                       type: integer
+ *                     total:
+ *                       type: integer
+ *       400:
+ *         description: Invalid parameters
+ *       401:
+ *         description: Unauthorized - missing or invalid token
+ *       404:
+ *         description: User not found
+ */
+router.get("/:userId/following", followUserValidation, getFollowing);
+
+/**
+ * @swagger
+ * /api/v1/user/{userId}/is-following:
+ *   get:
+ *     summary: Check if authenticated user is following another user
+ *     description: |
+ *       Returns whether the authenticated user is following the specified user.
+ *     tags: [User]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID of the target user
+ *     responses:
+ *       200:
+ *         description: Follow status retrieved
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 isFollowing:
+ *                   type: boolean
+ *                   description: true if authenticated user follows the target user
+ *       400:
+ *         description: Invalid userId
+ *       401:
+ *         description: Unauthorized - missing or invalid token
+ *       404:
+ *         description: Target user not found
+ */
+router.get("/:userId/is-following", followUserValidation, isFollowing);
 
 export default router;
