@@ -413,7 +413,9 @@ export const userProfileUpdate = asyncHandler(async (req, res) => {
         throw new ApiError(409, "Username already exists");
       }
 
-      await redisClient.del(REDIS_KEYS.usernameAvailability(currentUser.username));
+      await redisClient.del(
+        REDIS_KEYS.usernameAvailability(currentUser.username),
+      );
       await redisClient.del(REDIS_KEYS.usernameAvailability(username));
     }
   }
@@ -999,4 +1001,203 @@ export const checkUsernameAvailability = asyncHandler(async (req, res) => {
     available,
     cached: false,
   });
+});
+
+export const followUser = asyncHandler(async (req, res) => {
+  const followerId = req.session?.userId;
+  const followingId = req.params.userId;
+
+  if (!followerId) {
+    throw new ApiError(401, "Unauthorized");
+  }
+
+  if (followerId === followingId) {
+    throw new ApiError(400, "You cannot follow yourself");
+  }
+
+  const userExists = await prisma.user.findUnique({
+    where: { id: followingId },
+    select: { id: true },
+  });
+
+  if (!userExists) {
+    throw new ApiError(404, "User not found");
+  }
+
+  const alreadyFollowing = await prisma.follow.findUnique({
+    where: {
+      followerId_followingId: {
+        followerId,
+        followingId,
+      },
+    },
+  });
+
+  if (alreadyFollowing) {
+    throw new ApiError(409, "Already following this user");
+  }
+
+  await prisma.follow.create({
+    data: {
+      followerId,
+      followingId,
+    },
+  });
+
+  return res.status(200).json({
+    success: true,
+    message: "User followed successfully",
+  });
+});
+
+export const unfollowUser = asyncHandler(async (req, res) => {
+  const followerId = req.session?.userId;
+  const followingId = req.params.userId;
+
+  if (!followerId) {
+    throw new ApiError(401, "Unauthorized");
+  }
+
+  if (followerId === followingId) {
+    throw new ApiError(400, "You cannot unfollow yourself");
+  }
+
+  const follow = await prisma.follow.findUnique({
+    where: {
+      followerId_followingId: {
+        followerId,
+        followingId,
+      },
+    },
+  });
+
+  if (!follow) {
+    throw new ApiError(404, "You are not following this user");
+  }
+
+  await prisma.follow.delete({
+    where: {
+      followerId_followingId: {
+        followerId,
+        followingId,
+      },
+    },
+  });
+
+  return res.status(200).json({
+    success: true,
+    message: "User unfollowed successfully",
+  });
+});
+
+export const getFollowers = asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+  const page = Number(req.query.page) || 1;
+  const limit = Number(req.query.limit) || 10;
+
+  const skip = (page - 1) * limit;
+
+  const [followers, totalCount] = await prisma.$transaction([
+    prisma.follow.findMany({
+      where: { followingId: userId },
+      skip,
+      take: limit,
+      orderBy: { createdAt: "desc" },
+      select: {
+        follower: {
+          select: {
+            id: true,
+            username: true,
+            avatarUrl: true,
+          },
+        },
+      },
+    }),
+
+    prisma.follow.count({
+      where: { followingId: userId },
+    }),
+  ]);
+
+  const data = followers.map((f) => f.follower);
+
+  res.status(200).json({
+    success: true,
+    message: "Followers fetched",
+    meta: {
+      page,
+      limit,
+      totalCount,
+      totalPages: Math.ceil(totalCount / limit),
+    },
+    followers: data,
+  });
+});
+
+export const getFollowing = asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+  const page = Number(req.query.page) || 1;
+  const limit = Number(req.query.limit) || 10;
+
+  const skip = (page - 1) * limit;
+
+  const [followings, totalCount] = await prisma.$transaction([
+    prisma.follow.findMany({
+      where: { followerId: userId },
+      skip,
+      take: limit,
+      orderBy: { createdAt: "desc" },
+      select: {
+        following: {
+          select: {
+            id: true,
+            username: true,
+            avatarUrl: true,
+          },
+        },
+      },
+    }),
+
+    prisma.follow.count({
+      where: { followerId: userId },
+    }),
+  ]);
+
+  const data = followings.map((f) => f.following);
+
+  res.status(200).json({
+    success: true,
+    message: "Following list fetched",
+    meta: {
+      page,
+      limit,
+      totalCount,
+      totalPages: Math.ceil(totalCount / limit),
+    },
+    following: data,
+  });
+});
+
+export const isFollowing = asyncHandler(async (req, res) => {
+  const followerId = req.session?.userId;
+  const followingId = req.params.userId;
+
+  if (!followerId) {
+    throw new ApiError(401, "Unauthorized");
+  }
+
+  const follow = await prisma.follow.findUnique({
+    where: {
+      followerId_followingId: {
+        followerId,
+        followingId,
+      },
+    },
+  });
+
+  return res.status(200).json({
+    success: true,
+    message: "Status fetched",
+    isFollowing: !!follow,
+  })
 });

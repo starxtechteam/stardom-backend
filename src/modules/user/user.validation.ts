@@ -147,9 +147,31 @@ export const updateSocialSchema = z.object({
     "Instagram URL must be from instagram.com",
   ).optional(),
 });
+
+const followUserSchema = z.object({
+  userId: z.string("userId is required").max(100, "Invaild userId")
+});
+
+const follows = z.object({
+  page: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(1000)
+    .default(1),
+
+  limit: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(100)
+    .default(10),
+});
+
 export const updateProfileValidation = validationInput(updateProfileSchema);
 export const updateSocialValidation = validationInput(updateSocialSchema);
 export const changeEmailValidation = validationInput(updateEmail);
 export const changeEmailValidation2 = validationInput(updateEmailStep2);
 export const changePasswordValidation = validationInput(changePasswordSchema);
 export const changePasswordVerify = validationInput(changePasswordVerifyOTP);
+export const followUserValidation = validationInput(followUserSchema, "params");
