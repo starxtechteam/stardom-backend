@@ -112,6 +112,19 @@ export const userProfile = asyncHandler(async (req, res) => {
     throw new ApiError(404, "User not found");
   }
 
+  const [followerCount, followingCount] = await prisma.$transaction([
+    prisma.follow.count({
+      where: { followingId: userId },
+    }),
+
+    prisma.follow.count({
+      where: {followerId: userId}
+    })
+  ]);
+
+  (user as any).follower = followerCount;
+  (user as any).following = followingCount;
+
   await redisClient.set(REDIS_KEYS.userdata(userId), JSON.stringify(user), {
     EX: 300,
   });
