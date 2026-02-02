@@ -170,14 +170,6 @@ export const invalidateOtp = async (tokenHash: string) => {
   await redisClient.del(REDIS_KEYS.identifier(tokenHash));
 };
 
-/**
- * Log audit events for sensitive security operations
- * @param userId - User ID
- * @param action - Action type (ENABLE_2FA, DISABLE_2FA, LOGOUT_ALL_DEVICES, PASSWORD_RESET, etc.)
- * @param ipAddress - Client IP
- * @param device - Device information
- * @param status - success or failure
- */
 export const logAuditEvent = async (
   userId: string,
   action: string,

@@ -1,6 +1,7 @@
 import express from "express";
 import authRoutes from "../modules/auth/auth.routes.js";
 import userRoutes from "../modules/user/user.routes.ts";
+import adminRoutes from "../modules/admin/admin.routes.ts";
 const router = express.Router();
 
 /**
@@ -23,9 +24,14 @@ const router = express.Router();
  *       Two-factor authentication endpoints for enhanced security.
  *       - Enable 2FA with OTP
  *       - Verify 2FA tokens
+ *   - name: "Admin"
+ *     description: |
+ *       Authentication endpoints for user registration, login, and password management.
+ *       - Login
  */
 
 router.use('/auth', authRoutes);
 router.use('/user', userRoutes);
+router.use('/admin', adminRoutes);
 
 export default router;
