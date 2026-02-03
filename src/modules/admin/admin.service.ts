@@ -55,7 +55,7 @@ export async function loginTokens(
       deviceName: data.device.name,
       deviceType: data.device.type,
       os: data.device.os,
-      Browser: data.device.browser,
+      browser: data.device.browser,
       ipAddress: data.ip,
 
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 1000),

@@ -189,8 +189,10 @@ model UserSession {
   previousTokenHash String?
 
   deviceName String?
+  deviceType String?
+  browser    String?
+  os         String?
   ipAddress  String?
-  userAgent  String?
 
   expiresAt DateTime
   revokedAt DateTime?
@@ -384,7 +386,7 @@ model AdminSession {
 
   deviceName String?
   deviceType String?
-  Browser    String?
+  browser    String?
   os         String?
   ipAddress  String?
 

@@ -197,3 +197,7 @@ export const adminLoginOtpVerify = asyncHandler(async (req, res) => {
     refreshToken: tokens.refreshToken,
   });
 });
+
+// export const assignAdmin = asyncHandler(async(req, res) => {
+//     const { userId, role } = req.body;
+// })

@@ -18,7 +18,7 @@ import {
   getFollowing,
   isFollowing,
 } from "./user.controller.ts";
-import { verifyToken, roleAuth } from "../../middlewares/auth.ts";
+import { createVerifyToken } from "../../middlewares/auth.ts";
 import {
   updateProfileValidation,
   updateSocialValidation,
@@ -30,7 +30,7 @@ import {
 } from "./user.validation.ts";
 
 const router = express.Router();
-router.use(verifyToken, roleAuth("user"));
+router.use(createVerifyToken("user"));
 
 /**
  * @swagger
