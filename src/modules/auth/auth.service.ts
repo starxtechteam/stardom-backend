@@ -143,7 +143,9 @@ export const actualLogin = async (
       refreshTokenHash: refresh.hash,
       deviceName: device.deviceName,
       ipAddress: ip,
-      userAgent: device.deviceType,
+      deviceType: device.deviceType,
+      os: device.os,
+      browser: device.browser,
       expiresAt: new Date(Date.now() + AUTH_OTP.SESSION_EXPIRE_IN * 86400000),
     },
   });
@@ -168,32 +170,6 @@ export const invalidateOtp = async (tokenHash: string) => {
   await redisClient.del(REDIS_KEYS.loginOtp(tokenHash));
   await redisClient.del(REDIS_KEYS.otpVerify(tokenHash));
   await redisClient.del(REDIS_KEYS.identifier(tokenHash));
-};
-
-/**
- * Log audit events for sensitive security operations
- * @param userId - User ID
- * @param action - Action type (ENABLE_2FA, DISABLE_2FA, LOGOUT_ALL_DEVICES, PASSWORD_RESET, etc.)
- * @param ipAddress - Client IP
- * @param device - Device information
- * @param status - success or failure
- */
-export const logAuditEvent = async (
-  userId: string,
-  action: string,
-  ipAddress: string,
-  device: DeviceInfo,
-  status: "success" | "failure",
-): Promise<void> => {
-  try {
-    // Log to database (if audit table exists) or to console/external service
-    console.log(`[AUDIT] ${action} | User: ${userId} | IP: ${ipAddress} | Device: ${device.deviceName} | Status: ${status}`);
-    
-    // Optional: Store in database if audit table exists
-    // await prisma.auditLog.create({...})
-  } catch (err) {
-    console.error("Failed to log audit event:", err);
-  }
 };
 
 export const RESERVED_SET = new Set(

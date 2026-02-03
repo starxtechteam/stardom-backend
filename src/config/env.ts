@@ -38,6 +38,9 @@ const envSchema = z.object({
   JWT_REFRESH_SECRET: z.string(),
   JWT_REFRESH_EXPIRES_IN: z.string().default("7d"),
 
+  JWT_ADMIN_ACCESS_SECRET: z.string(),
+  JWT_ADMIN_REFRESH_SECRET: z.string(),
+
   ALLOWED_ORIGINS: z.string().default("*"),
 });
 

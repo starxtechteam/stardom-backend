@@ -33,7 +33,7 @@ import {
 } from "./auth.validation.ts";
 import { authRateLimit } from "../../middlewares/ratelimit.ts";
 
-import { verifyToken, roleAuth } from "../../middlewares/auth.ts";
+import { createVerifyToken } from "../../middlewares/auth.ts";
 
 const router = express.Router();
 
@@ -434,7 +434,7 @@ router.post(
  */
 router.post("/reset-password", resetPasswordValidate3, resetPasswordStep3);
 
-router.use(verifyToken, roleAuth("user"));
+router.use(createVerifyToken("user"));
 /**
  * @swagger
  * /api/v1/auth/enable/2fa/otp:

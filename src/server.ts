@@ -21,6 +21,9 @@ app.listen(port, () => {
     `${chalk.cyan("📍 URL:")}      ${chalk.white(`http://localhost:${port}`)}`
   );
   console.log(
+    `${chalk.cyan("📄 DOCS:")}     ${chalk.white(`http://localhost:${port}/api-docs`)}`
+  );
+  console.log(
     `${chalk.cyan("🌍 ENV:")}      ${chalk.yellow(ENV.NODE_ENV)}`
   );
   console.log(

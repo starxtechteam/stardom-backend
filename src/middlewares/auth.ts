@@ -4,6 +4,7 @@ import type { JwtPayload as JwtLibPayload } from "jsonwebtoken";
 
 import type { JwtPayload } from "../types/jwt.types.ts";
 import type { AuthSession } from "../types/auth.types.ts";
+
 import { ENV } from "../config/env.ts";
 import { asyncHandler } from "../utils/async-handler.ts";
 import { ApiError } from "../utils/api-error.ts";
@@ -19,33 +20,41 @@ declare global {
   }
 }
 
-export const verifyToken = asyncHandler(
-  async (req: Request, _res: Response, next: NextFunction) => {
+type AuthType = "user" | "admin";
+
+export const createVerifyToken = (type: AuthType) =>
+  asyncHandler(async (req: Request, _res: Response, next: NextFunction) => {
+    /* ========== AUTH HEADER ========== */
     const authHeader = req.headers.authorization;
 
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    if (!authHeader?.startsWith("Bearer ")) {
       throw new ApiError(401, "Unauthorized");
     }
 
     const token = authHeader.slice(7).trim();
+
     if (!token) {
       throw new ApiError(401, "Unauthorized");
     }
 
-    // 🔐 Blacklist check (logout / forced revoke)
+    /* ========== BLACKLIST ========== */
     const isBlacklisted = await redisClient.get(
       REDIS_KEYS.blacklistToken(token),
     );
+
     if (isBlacklisted) {
-      throw new ApiError(401, "Unauthorized");
+      throw new ApiError(401, "Token revoked");
     }
+
+    /* ========== JWT VERIFY ========== */
+    const secret =
+      type === "admin" ? ENV.JWT_ADMIN_ACCESS_SECRET : ENV.JWT_ACCESS_SECRET;
 
     let decoded: JwtPayload;
 
     try {
-      decoded = jwt.verify(token, ENV.JWT_ACCESS_SECRET) as JwtLibPayload &
-        JwtPayload;
-    } catch (err: unknown) {
+      decoded = jwt.verify(token, secret) as JwtPayload & JwtLibPayload;
+    } catch (err: any) {
       if (err instanceof jwt.TokenExpiredError) {
         throw new ApiError(401, "Token expired");
       }
@@ -54,56 +63,71 @@ export const verifyToken = asyncHandler(
     }
 
     if (!decoded?.sessionId || !decoded?.role) {
-      throw new ApiError(401, "Invalid token");
+      throw new ApiError(401, "Invalid token payload");
     }
 
-    const userSession = await prisma.userSession.findUnique({
-      where: { id: decoded.sessionId },
-      select: {
-        id: true,
-        userId: true,
-        deviceName: true,
-        ipAddress: true,
-        userAgent: true,
-        revokedAt: true,
-      },
-    });
+    /* ========== FETCH SESSION ========== */
+    let sessionDb: any;
 
-    if (!userSession || userSession.revokedAt) {
+    if (type === "user") {
+      sessionDb = await prisma.userSession.findUnique({
+        where: { id: decoded.sessionId },
+        select: {
+          id: true,
+          userId: true,
+          deviceName: true,
+          deviceType: true,
+          os: true,
+          browser: true,
+          ipAddress: true,
+          revokedAt: true,
+          expiresAt: true,
+        },
+      });
+    } else {
+      sessionDb = await prisma.adminSession.findUnique({
+        where: { id: decoded.sessionId },
+        select: {
+          id: true,
+          adminId: true,
+          deviceName: true,
+          deviceType: true,
+          os: true,
+          browser: true,
+          ipAddress: true,
+          revokedAt: true,
+          expiresAt: true,
+        },
+      });
+    }
+
+    /* ========== VALIDATE SESSION ========== */
+    if (!sessionDb || sessionDb.revokedAt || sessionDb.expiresAt < new Date()) {
       throw new ApiError(401, "Session expired");
     }
 
-    const ip = getClientIp(req)?.trim();
+    /* ========== IP CHECK ========== */
+    const ip = getClientIp(req);
 
-    if (!ip || userSession.ipAddress !== ip) {
-      throw new ApiError(
-        401,
-        "Session validation failed. Please log in again.",
-      );
+    if (!ip || sessionDb.ipAddress !== ip) {
+      throw new ApiError(401, "Session validation failed. Please login again.");
     }
 
-    const authSession: AuthSession = {
-      id: userSession.id,
-      userId: userSession.userId,
-      deviceName: userSession.deviceName,
-      ipAddress: userSession.ipAddress,
-      userAgent: userSession.userAgent,
+    /* ========== ATTACH SESSION ========== */
+
+    const session: AuthSession = {
+      id: sessionDb.id,
+      userId: type === "admin" ? sessionDb.adminId : sessionDb.userId,
+      deviceName: sessionDb.deviceName,
+      deviceType: sessionDb.deviceType,
+      os: sessionDb.os,
+      browser: sessionDb.browser,
+      ipAddress: sessionDb.ipAddress,
       role: decoded.role as "user" | "admin",
-      token: token,
+      token,
     };
 
-    req.session = authSession;
-    next();
-  },
-);
-
-export const roleAuth = (...roles: Array<"user" | "admin">) =>
-  asyncHandler(async (req: Request, _res: Response, next: NextFunction) => {
-    const role = req.session?.role;
-
-    if (!role || !roles.includes(role)) {
-      throw new ApiError(403, "Forbidden");
-    }
+    req.session = session;
 
     next();
   });
