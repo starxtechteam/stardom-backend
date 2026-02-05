@@ -8,6 +8,7 @@ import {
     activateAdmin,
     approveAdmin, 
     getAdminDetails,
+    refreshToken,
 } from "./admin.controller.ts";
 
 import { 
@@ -119,6 +120,50 @@ router.post("/login", authRateLimit, loginValidation, adminLogin);
  *         description: Too many attempts
  */
 router.post("/login/otp-verify", authRateLimit, loginOTPVerificationVal, adminLoginOtpVerify);
+
+/**
+ * @swagger
+ * /api/v1/admin/refresh-token:
+ *   post:
+ *     summary: Refresh admin access token
+ *     description: |
+ *       Exchange a valid refresh token for a new access token and refresh token.
+ *       Requires an existing admin session and matching device/IP.
+ *     tags: [Admin]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - token
+ *             properties:
+ *               token:
+ *                 type: string
+ *                 description: Refresh token
+ *     responses:
+ *       200:
+ *         description: New tokens issued
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 refreshToken:
+ *                   type: string
+ *       400:
+ *         description: Invalid request or token
+ *       401:
+ *         description: Unauthorized or expired token
+ *       429:
+ *         description: Too many requests (rate limited)
+ */
+router.post("/refresh-token", authRateLimit, refreshToken);
 
 /**
  * @swagger

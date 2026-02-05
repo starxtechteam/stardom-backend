@@ -1,3 +1,6 @@
+import jwt from "jsonwebtoken";
+import type { JwtPayload as JwtLibPayload } from "jsonwebtoken";
+import type { JwtPayload } from "../../types/jwt.types.ts";
 import { asyncHandler } from "../../utils/async-handler.js";
 import { ApiError } from "../../utils/api-error.js";
 import { prisma } from "../../config/prisma.config.ts";
@@ -5,10 +8,11 @@ import bcrypt from "bcryptjs";
 import { generateOTP, generateToken, verifyOTP } from "../../utils/core.ts";
 import { getClientIp, getDeviceInfo } from "../auth/auth.service.ts";
 import { sendAdminLoginOtp } from "../../mails/admin/sendLoginOtp.ts";
-import { hashValue, loginTokens } from "./admin.service.ts";
+import { hashValue, loginTokens, signAccessToken, signRefreshToken } from "./admin.service.ts";
 import { setAuthCookie } from "./admin.service.ts";
 import { requireSuperAdmin, findAdminByIdOrUserId } from "./admin.service.ts";
 import { redisClient, REDIS_KEYS } from "../../config/redis.config.ts";
+import { ENV } from "../../config/env.ts";
 
 const MAXIMUM_LOGGEDIN_DEVICE = 5;
 
@@ -402,18 +406,85 @@ export const getAdminDetails = asyncHandler(async (req, res) => {
   const data = {
     admin: admin.user,
     permissions: admin.permissions,
-    role: admin.role
-  }
+    role: admin.role,
+  };
 
-  await redisClient.set(
-    REDIS_KEYS.adminData(admin.id),
-    JSON.stringify(data),
-    { EX: 5 * 60 },
-  );
+  await redisClient.set(REDIS_KEYS.adminData(admin.id), JSON.stringify(data), {
+    EX: 5 * 60,
+  });
 
   return res.status(200).json({
     success: true,
     message: "Fetched admin details",
     data,
   });
+});
+
+export const refreshToken = asyncHandler(async (req, res) => {
+  const { token } = req.body;
+
+  if (!token) {
+    throw new ApiError(400, "Invalid token");
+  }
+
+  let decoded;
+  try {
+    decoded = jwt.verify(token, ENV.JWT_ADMIN_REFRESH_SECRET) as JwtPayload & JwtLibPayload;
+  } catch (err: any) {
+    if (err instanceof jwt.TokenExpiredError) {
+      throw new ApiError(401, "Token expired");
+    }
+
+    throw new ApiError(401, "Invalid token");
+  }
+
+  const hashToken = hashValue(token);
+  const sessionDB = await prisma.adminSession.findFirst({
+    where: {
+      adminId: decoded.sessionId,
+      refreshTokenHash: hashToken,
+      expiresAt: { gte: new Date() },
+    },
+    include:{
+      admin: true,
+    }
+  });
+
+  if (!sessionDB) {
+    throw new ApiError(400, "Invalid or expired token");
+  }
+
+  const ip = getClientIp(req);
+  const device = getDeviceInfo(req);
+
+  if (
+    sessionDB.ipAddress !== ip ||
+    sessionDB.os !== device.os ||
+    sessionDB.deviceType !== device.deviceType
+  ) {
+    throw new ApiError(400, "Invalid request");
+  }
+
+  const access = signAccessToken({sessionId: sessionDB.id, role: sessionDB.admin.role});
+  const refresh = signRefreshToken({sessionId: sessionDB.admin.id, role: sessionDB.admin.role});
+
+  await prisma.adminSession.update({
+    where: {id: sessionDB.id},
+    data:{
+      previousTokenHash: hashToken,
+      refreshTokenHash: refresh.hash,
+      deviceName: device.deviceName,
+      deviceType: device.deviceType,
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    }
+  });
+
+  setAuthCookie(res, access.token);
+
+  return res.status(200).json({
+    success: true,
+    message: "New Token",
+    refreshToken: refresh.token
+  });
+
 });
