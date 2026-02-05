@@ -13,7 +13,8 @@
     "prisma:migrate:reset": "prisma migrate reset",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
-    "aws:delete": "node ./src/scripts/aws.scripts.ts"
+    "aws:delete": "node ./src/scripts/aws.scripts.ts",
+    "admin:init": "node ./src/scripts/InitAdmin.scripts.ts"
   },
   "repository": {
     "type": "git",
@@ -29,6 +30,7 @@
   "homepage": "https://github.com/starxtechteam/stardom-backend#readme",
   "devDependencies": {
     "@types/compression": "^1.8.1",
+    "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.19",
     "@types/ejs": "^3.1.5",
     "@types/express": "^5.0.6",
@@ -57,6 +59,7 @@
     "bcryptjs": "^3.0.3",
     "chalk": "^5.6.2",
     "compression": "^1.8.1",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "date-fns": "^4.1.0",
     "dompurify": "^3.3.1",

@@ -20,18 +20,70 @@ declare global {
   }
 }
 
-type AuthType = "user" | "admin";
+type Role = "user" | "admin" | "superadmin" | "moderator" | "support";
+type AuthType = Role;
 
-export const createVerifyToken = (type: AuthType) =>
+const ADMIN_ROLES: Role[] = ["admin", "superadmin", "moderator", "support"];
+
+const ROLE_RANK: Record<Role, number> = {
+  user: 0,
+  support: 1,
+  moderator: 2,
+  admin: 3,
+  superadmin: 4,
+};
+
+const isRole = (value: string): value is Role =>
+  (["user", "admin", "superadmin", "moderator", "support"] as const).includes(
+    value as Role,
+  );
+
+export const requireRoles = (...roles: Role[]) =>
   asyncHandler(async (req: Request, _res: Response, next: NextFunction) => {
-    /* ========== AUTH HEADER ========== */
-    const authHeader = req.headers.authorization;
+    const role = req.session?.role;
 
-    if (!authHeader?.startsWith("Bearer ")) {
+    if (!role) {
       throw new ApiError(401, "Unauthorized");
     }
 
-    const token = authHeader.slice(7).trim();
+    if (!roles.includes(role)) {
+      throw new ApiError(403, "Forbidden");
+    }
+
+    next();
+  });
+
+export const requireMinRole = (minRole: Role) =>
+  asyncHandler(async (req: Request, _res: Response, next: NextFunction) => {
+    const role = req.session?.role;
+
+    if (!role) {
+      throw new ApiError(401, "Unauthorized");
+    }
+
+    if (ROLE_RANK[role] < ROLE_RANK[minRole]) {
+      throw new ApiError(403, "Forbidden");
+    }
+
+    next();
+  });
+
+export const createVerifyToken = (type: AuthType | AuthType[]) =>
+  asyncHandler(async (req: Request, _res: Response, next: NextFunction) => {
+    const allowedTypes = Array.isArray(type) ? type : [type];
+    const isUserRoute = allowedTypes.length === 1 && allowedTypes[0] === "user";
+
+    /* ========== AUTH HEADER ========== */
+    const authHeader = req.headers.authorization;
+    const cookieToken = req.cookies?.token;
+
+    let token: string | undefined;
+
+    if (authHeader?.startsWith("Bearer ")) {
+      token = authHeader.slice(7).trim();
+    } else if (cookieToken) {
+      token = String(cookieToken).trim();
+    }
 
     if (!token) {
       throw new ApiError(401, "Unauthorized");
@@ -47,8 +99,9 @@ export const createVerifyToken = (type: AuthType) =>
     }
 
     /* ========== JWT VERIFY ========== */
-    const secret =
-      type === "admin" ? ENV.JWT_ADMIN_ACCESS_SECRET : ENV.JWT_ACCESS_SECRET;
+    const secret = isUserRoute
+      ? ENV.JWT_ACCESS_SECRET
+      : ENV.JWT_ADMIN_ACCESS_SECRET;
 
     let decoded: JwtPayload;
 
@@ -62,14 +115,18 @@ export const createVerifyToken = (type: AuthType) =>
       throw new ApiError(401, "Invalid token");
     }
 
-    if (!decoded?.sessionId || !decoded?.role) {
+    if (!decoded?.sessionId || !decoded?.role || !isRole(decoded.role)) {
       throw new ApiError(401, "Invalid token payload");
     }
 
     /* ========== FETCH SESSION ========== */
     let sessionDb: any;
 
-    if (type === "user") {
+    if (isUserRoute) {
+      if (decoded.role !== "user") {
+        throw new ApiError(401, "Invalid token payload");
+      }
+
       sessionDb = await prisma.userSession.findUnique({
         where: { id: decoded.sessionId },
         select: {
@@ -85,6 +142,10 @@ export const createVerifyToken = (type: AuthType) =>
         },
       });
     } else {
+      if (!ADMIN_ROLES.includes(decoded.role)) {
+        throw new ApiError(401, "Invalid token payload");
+      }
+
       sessionDb = await prisma.adminSession.findUnique({
         where: { id: decoded.sessionId },
         select: {
@@ -113,17 +174,45 @@ export const createVerifyToken = (type: AuthType) =>
       throw new ApiError(401, "Session validation failed. Please login again.");
     }
 
+    /* ========== ADMIN STATUS CHECK ========== */
+    let effectiveRole: Role = decoded.role;
+
+    if (!isUserRoute) {
+      const adminRecord = await prisma.admin.findUnique({
+        where: { id: sessionDb.adminId },
+        select: {
+          role: true,
+          isApproved: true,
+          status: true,
+        },
+      });
+
+      if (!adminRecord) {
+        throw new ApiError(403, "Admin not allowed");
+      }
+
+      if (!adminRecord.isApproved || adminRecord.status !== "active") {
+        throw new ApiError(403, "Admin not allowed");
+      }
+
+      effectiveRole = adminRecord.role as Role;
+
+      if (!allowedTypes.includes(effectiveRole)) {
+        throw new ApiError(403, "Forbidden");
+      }
+    }
+
     /* ========== ATTACH SESSION ========== */
 
     const session: AuthSession = {
       id: sessionDb.id,
-      userId: type === "admin" ? sessionDb.adminId : sessionDb.userId,
+      userId: isUserRoute ? sessionDb.userId : sessionDb.adminId,
       deviceName: sessionDb.deviceName,
       deviceType: sessionDb.deviceType,
       os: sessionDb.os,
       browser: sessionDb.browser,
       ipAddress: sessionDb.ipAddress,
-      role: decoded.role as "user" | "admin",
+      role: effectiveRole,
       token,
     };
 

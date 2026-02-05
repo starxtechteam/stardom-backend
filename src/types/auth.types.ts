@@ -20,7 +20,7 @@ export type AuthSession = {
   os: string | null,
   browser: string | null,
   ipAddress: string | null,
-  role: "user" | "admin",
+  role: "user" | "admin" | "superadmin" | "moderator" | "support",
   token: string,
 }
 
