@@ -7,6 +7,8 @@ import { getClientIp, getDeviceInfo } from "../auth/auth.service.ts";
 import { sendAdminLoginOtp } from "../../mails/admin/sendLoginOtp.ts";
 import { hashValue, loginTokens } from "./admin.service.ts";
 import { setAuthCookie } from "./admin.service.ts";
+import { requireSuperAdmin, findAdminByIdOrUserId } from "./admin.service.ts";
+import { redisClient, REDIS_KEYS } from "../../config/redis.config.ts";
 
 const MAXIMUM_LOGGEDIN_DEVICE = 5;
 
@@ -64,6 +66,7 @@ export const adminLogin = asyncHandler(async (req, res) => {
 
     const tokens = await loginTokens({
       adminId: admin.id,
+      role: admin.role,
       ip,
       device: {
         name: device.deviceName,
@@ -177,9 +180,16 @@ export const adminLoginOtpVerify = asyncHandler(async (req, res) => {
   ]);
 
   const device = getDeviceInfo(req);
+  const admin = await prisma.admin.findUnique({
+    where: { id: storedOtp.adminId },
+  });
+  if (!admin) {
+    throw new ApiError(400, "Admin not found");
+  }
 
   const tokens = await loginTokens({
     adminId: storedOtp.adminId,
+    role: admin.role,
     ip,
     device: {
       name: device.deviceName,
@@ -198,6 +208,212 @@ export const adminLoginOtpVerify = asyncHandler(async (req, res) => {
   });
 });
 
-// export const assignAdmin = asyncHandler(async(req, res) => {
-//     const { userId, role } = req.body;
-// })
+export const assignAdmin = asyncHandler(async (req, res) => {
+  const adminId = req.session?.userId;
+  const { userId, role, permissions = [] } = req.body;
+
+  if (!adminId) {
+    throw new ApiError(400, "Admin id is required");
+  }
+
+  if (!userId) {
+    throw new ApiError(400, "User id is required");
+  }
+
+  if (!role) {
+    throw new ApiError(400, "Role is required");
+  }
+
+  if (!Array.isArray(permissions)) {
+    throw new ApiError(400, "Permissions must be an array");
+  }
+
+  const admin = await requireSuperAdmin(adminId);
+
+  const existingAdmin = await prisma.admin.findUnique({
+    where: { userId: userId },
+  });
+
+  if (existingAdmin) {
+    throw new ApiError(409, "This user already exists");
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+  });
+
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  if (user.status !== "active") {
+    throw new ApiError(400, `user account is ${user.status}`);
+  }
+
+  const createAdmin = await prisma.admin.create({
+    data: {
+      userId: user.id,
+      role: role,
+      status: "inactive",
+      permissions: permissions,
+      createdBy: admin.id,
+    },
+  });
+
+  if (!createAdmin) throw new ApiError(500, "Failed to add admin");
+
+  return res.status(200).json({
+    success: true,
+    message: "New admin added",
+  });
+});
+
+export const activateAdmin = asyncHandler(async (req, res) => {
+  const { sourceAdminId } = req.body;
+  const adminId = req.session?.userId;
+
+  if (!adminId) {
+    throw new ApiError(400, "Admin id is required");
+  }
+
+  if (!sourceAdminId) {
+    throw new ApiError(400, "Target admin id is required");
+  }
+
+  await requireSuperAdmin(adminId);
+
+  const existingAdmin = await findAdminByIdOrUserId(sourceAdminId);
+
+  if (!existingAdmin) {
+    throw new ApiError(404, "Invalid admin");
+  }
+
+  if (!existingAdmin.isApproved) {
+    throw new ApiError(400, "User account unapproved");
+  }
+
+  if (existingAdmin.status !== "inactive") {
+    throw new ApiError(400, `User account ${existingAdmin.status}`);
+  }
+
+  await prisma.admin.update({
+    where: { id: existingAdmin.id },
+    data: {
+      status: "active",
+      activitedAt: new Date(Date.now()),
+      activatedBy: adminId,
+    },
+  });
+
+  return res.status(200).json({
+    success: true,
+    message: "This admin activated",
+  });
+});
+
+export const approveAdmin = asyncHandler(async (req, res) => {
+  const { sourceAdminId } = req.body;
+  const adminId = req.session?.userId;
+
+  if (!adminId) {
+    throw new ApiError(400, "Admin id is required");
+  }
+
+  if (!sourceAdminId) {
+    throw new ApiError(400, "Target admin id is required");
+  }
+
+  await requireSuperAdmin(adminId);
+
+  const existingAdmin = await findAdminByIdOrUserId(sourceAdminId);
+
+  if (!existingAdmin) {
+    throw new ApiError(404, "Invalid admin");
+  }
+
+  if (existingAdmin.isApproved) {
+    throw new ApiError(409, "Admin already approved");
+  }
+
+  await prisma.admin.update({
+    where: { id: existingAdmin.id },
+    data: {
+      isApproved: true,
+    },
+  });
+
+  return res.status(200).json({
+    success: true,
+    message: "Admin approved",
+  });
+});
+
+export const getAdminDetails = asyncHandler(async (req, res) => {
+  const adminId = req.session?.userId;
+
+  if (!adminId) {
+    throw new ApiError(401, "Unautherized");
+  }
+
+  const cache = await redisClient.get(REDIS_KEYS.adminData(adminId));
+  if (cache) {
+    return res.status(200).json({
+      success: true,
+      message: "Fetched admin details",
+      data: JSON.parse(cache),
+    });
+  }
+
+  const admin = await prisma.admin.findFirst({
+    where: { id: adminId },
+    select: {
+      id: true,
+      userId: true,
+      isApproved: true,
+      status: true,
+      permissions: true,
+      role: true,
+      user: {
+        select: {
+          username: true,
+          email: true,
+          avatarUrl: true,
+        },
+      },
+    },
+  });
+
+  if (!admin) {
+    throw new ApiError(404, "Not Found");
+  }
+
+  if (!admin.isApproved) {
+    throw new ApiError(400, "Your account is not approved");
+  }
+
+  if (admin.status !== "active") {
+    throw new ApiError(400, `Account is ${admin.status}`);
+  }
+
+  if (!admin.user) {
+    throw new ApiError(400, "User details not found");
+  }
+
+  const data = {
+    admin: admin.user,
+    permissions: admin.permissions,
+    role: admin.role
+  }
+
+  await redisClient.set(
+    REDIS_KEYS.adminData(admin.id),
+    JSON.stringify(data),
+    { EX: 5 * 60 },
+  );
+
+  return res.status(200).json({
+    success: true,
+    message: "Fetched admin details",
+    data,
+  });
+});

@@ -1,6 +1,22 @@
 import express from "express";
-import { adminLogin, adminLoginOtpVerify } from "./admin.controller.ts";
 import { authRateLimit } from "../../middlewares/ratelimit.ts";
+import { createVerifyToken } from "../../middlewares/auth.ts";
+import { 
+    adminLogin, 
+    adminLoginOtpVerify,
+    assignAdmin,
+    activateAdmin,
+    approveAdmin, 
+    getAdminDetails,
+} from "./admin.controller.ts";
+
+import { 
+    loginValidation,
+    loginOTPVerificationVal,
+    assignAdminValidation,
+    activateAdminValidation,
+    approveAdminValidation,
+} from "./admin.validation.ts";
 
 const router = express.Router();
 
@@ -52,7 +68,7 @@ const router = express.Router();
  *       429:
  *         description: Too many requests (rate limited)
  */
-router.post("/login", authRateLimit, adminLogin);
+router.post("/login", authRateLimit, loginValidation, adminLogin);
 
 /**
  * @swagger
@@ -102,6 +118,166 @@ router.post("/login", authRateLimit, adminLogin);
  *       429:
  *         description: Too many attempts
  */
-router.post("/login/otp-verify", authRateLimit, adminLoginOtpVerify);
+router.post("/login/otp-verify", authRateLimit, loginOTPVerificationVal, adminLoginOtpVerify);
+
+/**
+ * @swagger
+ * /api/v1/admin/profile:
+ *   get:
+ *     summary: Get admin profile
+ *     description: |
+ *       Retrieve the authenticated admin's profile details and permissions.
+ *       Data is cached in Redis for 5 minutes for performance optimization.
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Admin profile retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     admin:
+ *                       type: object
+ *                       properties:
+ *                         username:
+ *                           type: string
+ *                         email:
+ *                           type: string
+ *                           format: email
+ *                         avatarUrl:
+ *                           type: string
+ *                           format: uri
+ *                     permissions:
+ *                       type: array
+ *                       items:
+ *                         type: string
+ *       400:
+ *         description: Account is not approved, inactive, or user details missing
+ *       401:
+ *         description: Unauthorized - missing or invalid token
+ *       404:
+ *         description: Admin not found
+ */
+router.get("/profile", createVerifyToken(["moderator", "admin", "superadmin", "support"]), getAdminDetails);
+
+router.use(createVerifyToken("superadmin"));
+/**
+ * @swagger
+ * /api/v1/admin/assign:
+ *   post:
+ *     summary: Assign a user as admin
+ *     description: |
+ *       Creates an admin record for a user. Only superadmins can assign admins.
+ *     tags: [Admin]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - userId
+ *               - role
+ *             properties:
+ *               userId:
+ *                 type: string
+ *                 description: User id to assign as admin
+ *               role:
+ *                 type: string
+ *                 enum: [admin, moderator, support, user]
+ *                 description: Admin role for the user
+ *               permissions:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   enum: [manage_users, manage_content, view_reports, manage_settings]
+ *                 description: Optional permissions list
+ *     responses:
+ *       200:
+ *         description: Admin assigned successfully
+ *       400:
+ *         description: Missing or invalid input
+ *       403:
+ *         description: Forbidden
+ *       409:
+ *         description: User already admin
+ */
+router.post("/assign", authRateLimit, assignAdminValidation, assignAdmin);
+
+/**
+ * @swagger
+ * /api/v1/admin/activate:
+ *   post:
+ *     summary: Activate an admin
+ *     description: |
+ *       Activates an approved admin account. Only superadmins can activate admins.
+ *     tags: [Admin]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - sourceAdminId
+ *             properties:
+ *               sourceAdminId:
+ *                 type: string
+ *                 description: Admin id or user id to activate
+ *     responses:
+ *       200:
+ *         description: Admin activated successfully
+ *       400:
+ *         description: Missing or invalid input
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Admin not found
+ */
+router.post("/activate", authRateLimit, activateAdminValidation, activateAdmin);
+
+/**
+ * @swagger
+ * /api/v1/admin/approve:
+ *   post:
+ *     summary: Approve an admin
+ *     description: |
+ *       Approves an admin account. Only superadmins can approve admins.
+ *     tags: [Admin]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - sourceAdminId
+ *             properties:
+ *               sourceAdminId:
+ *                 type: string
+ *                 description: Admin id or user id to approve
+ *     responses:
+ *       200:
+ *         description: Admin approved successfully
+ *       400:
+ *         description: Missing or invalid input
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Admin not found
+ *       409:
+ *         description: Admin already approved
+ */
+router.post("/approve", authRateLimit, approveAdminValidation, approveAdmin);
 
 export default router;

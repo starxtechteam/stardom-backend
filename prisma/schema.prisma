@@ -351,7 +351,7 @@ model Admin {
   role   AdminRole @default(user)
 
   isApproved Boolean    @default(false)
-  status     UserStatus @default(active)
+  status     UserStatus @default(inactive)
 
   permissions AdminPermission[]
 
