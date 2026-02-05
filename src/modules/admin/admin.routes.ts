@@ -9,6 +9,8 @@ import {
     approveAdmin, 
     getAdminDetails,
     refreshToken,
+    logout,
+    logoutAllDevices,
 } from "./admin.controller.ts";
 
 import { 
@@ -214,6 +216,68 @@ router.post("/refresh-token", authRateLimit, refreshToken);
  *         description: Admin not found
  */
 router.get("/profile", createVerifyToken(["moderator", "admin", "superadmin", "support"]), getAdminDetails);
+
+/**
+ * @swagger
+ * /api/v1/admin/logout:
+ *   post:
+ *     summary: Logout admin
+ *     description: |
+ *       Logout the current admin session and revoke the current access token.
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Logged out successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *       400:
+ *         description: Invalid logout request
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Session mismatch
+ */
+router.post("/logout", createVerifyToken(["moderator", "admin", "superadmin", "support"]), logout);
+
+/**
+ * @swagger
+ * /api/v1/admin/logout/all:
+ *   post:
+ *     summary: Logout admin from all devices
+ *     description: |
+ *       Logout the admin from all active sessions and revoke the current access token.
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Logged out from all devices successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *       400:
+ *         description: Invalid logout request
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Invalid admin
+ */
+router.post("/logout/all", createVerifyToken(["moderator", "admin", "superadmin", "support"]), logoutAllDevices);
 
 router.use(createVerifyToken("superadmin"));
 /**

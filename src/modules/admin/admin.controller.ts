@@ -465,6 +465,14 @@ export const refreshToken = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Invalid request");
   }
 
+  if(!sessionDB.admin.isApproved){
+    throw new ApiError(400, "Account anapproved");
+  }
+
+  if(sessionDB.admin.status !== "active"){
+    throw new ApiError(400, `Account is ${sessionDB.admin.status}`);
+  }
+
   const access = signAccessToken({sessionId: sessionDB.id, role: sessionDB.admin.role});
   const refresh = signRefreshToken({sessionId: sessionDB.admin.id, role: sessionDB.admin.role});
 
@@ -487,4 +495,73 @@ export const refreshToken = asyncHandler(async (req, res) => {
     refreshToken: refresh.token
   });
 
+});
+
+export const logout = asyncHandler(async (req, res) => {
+  const session = req.session;
+  const token = session?.token;
+  const adminId = session?.userId;
+  const sessionId = session?.id;
+
+  if (!adminId || !sessionId || !token) {
+    throw new ApiError(400, "Invalid logout request");
+  }
+
+  const sessionDb = await prisma.adminSession.findUnique({
+    where: { id: sessionId },
+    select: { id: true, adminId: true },
+  });
+
+  if (!sessionDb || sessionDb.adminId !== adminId) {
+    throw new ApiError(403, "Session mismatch");
+  }
+
+  await Promise.all([
+    prisma.adminSession.deleteMany({
+      where: { id: sessionId, adminId: adminId },
+    }),
+    redisClient.set(REDIS_KEYS.blacklistToken(token), "1", {
+      EX: 60 * 60 * 24 * 7,
+    }), // 7 days
+    redisClient.del(REDIS_KEYS.adminData(adminId)),
+  ]);
+
+  return res.status(200).json({
+    success: true,
+    message: "Logged out successfully",
+  });
+});
+
+export const logoutAllDevices = asyncHandler(async (req, res) => {
+  const session = req.session;
+  const token = session?.token;
+  const adminId = session?.userId;
+
+  if (!adminId || !token) {
+    throw new ApiError(400, "Invalid logout request");
+  }
+
+  const admin = await prisma.admin.findUnique({
+    where: { id: adminId },
+    select: { id: true, isApproved: true, status: true },
+  });
+
+  if (!admin || !admin.isApproved || admin.status !== "active") {
+    throw new ApiError(403, "Invalid admin");
+  }
+
+  await Promise.all([
+    prisma.adminSession.deleteMany({
+      where: { adminId: adminId },
+    }),
+    redisClient.set(REDIS_KEYS.blacklistToken(token), "1", {
+      EX: 60 * 60 * 24 * 7,
+    }), // 7 days
+    redisClient.del(REDIS_KEYS.adminData(adminId)),
+  ]);
+
+  res.status(200).json({
+    success: true,
+    message: "Logged out from all devices successfully",
+  });
 });
