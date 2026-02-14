@@ -5,8 +5,8 @@ import { ENV } from "../config/env";
 
 // Create Redis connection
 const connection = new IORedis({
-  host: "127.0.0.1",
-  port: 6379,
+  host: ENV.REDIS_HOST,
+  port: ENV.REDIS_PORT,
   maxRetriesPerRequest: null,
 });
 
