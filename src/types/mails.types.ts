@@ -1,0 +1,42 @@
+import { Device } from "./auth.types.ts";
+
+export interface SendMailOptions {
+  template: string;
+  subject: string;
+  email: string;
+  data: Record<string, unknown>;
+}
+
+export interface SendOtpEmailProps {
+  email: string;
+  otp: string;
+}
+
+export interface SendWelcome {
+  email: string;
+  name: string;
+}
+
+export interface enable2FA {
+  email: string;
+  device: string;
+}
+
+export interface DeleteAccount {
+  email: string,
+  device: Device;
+  requestedAt: string;
+}
+
+export interface RecoverAccount {
+  email: string,
+  device: Device;
+  recoveredAt: string;
+}
+
+export interface ResetPassword {
+  email: string;
+  otp: string;
+  requestedAt: string;
+  device: string;
+}

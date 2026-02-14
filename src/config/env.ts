@@ -42,6 +42,10 @@ const envSchema = z.object({
   JWT_ADMIN_REFRESH_SECRET: z.string(),
 
   ALLOWED_ORIGINS: z.string().default("*"),
+
+  APP_URL: z.string(),
+  LOGO_URL: z.string(),
+  SUPPORT_EMAIL: z.string()
 });
 
 export const ENV = envSchema.parse(process.env);

@@ -7,12 +7,12 @@ import { prisma } from "../../config/prisma.config.ts";
 import bcrypt from "bcryptjs";
 import { generateOTP, generateToken, verifyOTP } from "../../utils/core.ts";
 import { getClientIp, getDeviceInfo } from "../auth/auth.service.ts";
-import { sendAdminLoginOtp } from "../../mails/admin/sendLoginOtp.ts";
 import { hashValue, loginTokens, signAccessToken, signRefreshToken } from "./admin.service.ts";
 import { setAuthCookie } from "./admin.service.ts";
 import { requireSuperAdmin, findAdminByIdOrUserId } from "./admin.service.ts";
 import { redisClient, REDIS_KEYS } from "../../config/redis.config.ts";
 import { ENV } from "../../config/env.ts";
+import { sendAdminLoginOtp } from "../../mails/email-producer.ts";
 
 const MAXIMUM_LOGGEDIN_DEVICE = 5;
 
@@ -126,15 +126,10 @@ export const adminLogin = asyncHandler(async (req, res) => {
     }),
   ]);
 
-  const sent = await sendAdminLoginOtp({
+  sendAdminLoginOtp({
     email: user.email,
-    otp,
-    expiresIn: 5,
+    otp
   });
-
-  if (!sent) {
-    throw new ApiError(500, "Failed to send OTP");
-  }
 
   return res.json({
     success: true,
