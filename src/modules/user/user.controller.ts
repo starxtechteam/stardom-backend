@@ -4,17 +4,16 @@ import { ApiError } from "../../utils/api-error.js";
 import { prisma } from "../../config/prisma.config.ts";
 import { redisClient, REDIS_KEYS } from "../../config/redis.config.ts";
 import { generateOTP, verifyOTP, generateToken } from "../../utils/core.ts";
-import { changeEmailOtp } from "../../mails/user/changeEmailOTP.ts";
 import {
   getClientIp,
   hashValue,
   isReservedUsername,
 } from "../auth/auth.service.ts";
 import bcrypt from "bcryptjs";
-import { changePasswordOtp } from "../../mails/user/changePassword.ts";
 import { generateUploadURL, deleteFile } from "../../config/aws.ts";
 import { ENV } from "../../config/env.ts";
 import logger from "../../utils/logger.ts";
+import { sendChangeEmailOtp, sendChangePasswordOtp } from "../../mails/email-producer.ts";
 
 export const generatePresignedUrl = asyncHandler(async (req, res) => {
   const userId = req.session?.userId;
@@ -576,9 +575,7 @@ export const changeMailStep1 = asyncHandler(async (req, res) => {
   const { otp, otpHash } = generateOTP();
   const { token, tokenHash } = generateToken();
 
-  if (!(await changeEmailOtp({ email, otp }))) {
-    throw new ApiError(500, "Failed to send OTP");
-  }
+  sendChangeEmailOtp({ email, otp })
 
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 min
 
@@ -664,9 +661,7 @@ export const changeMailStep2 = asyncHandler(async (req, res) => {
   const { otp: newOtp, otpHash: newOtpHash } = generateOTP();
   const { token: newToken, tokenHash: newTokenHash } = generateToken();
 
-  if (!(await changeEmailOtp({ email: user.email, otp: newOtp }))) {
-    throw new ApiError(500, "Failed to send OTP");
-  }
+  sendChangeEmailOtp({ email: user.email, otp: newOtp });
 
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
@@ -834,10 +829,6 @@ export const changePassword = asyncHandler(async (req, res) => {
   const { otp, otpHash } = generateOTP();
   const { token, tokenHash } = generateToken();
 
-  if (!(await changePasswordOtp({ email: user.email, otp }))) {
-    throw new ApiError(500, "Failed to send OTP");
-  }
-
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
   const ip = getClientIp(req);
 
@@ -861,6 +852,8 @@ export const changePassword = asyncHandler(async (req, res) => {
       },
     }),
   ]);
+
+  sendChangePasswordOtp({ email: user.email, otp });
 
   await redisClient.set(REDIS_KEYS.changePassword(userId), hashPassword, {
     EX: 5 * 60,

@@ -8,18 +8,23 @@ import {
   AUTH_OTP,
   MAXIMUM_LOGGEDIN_DEVICE,
 } from "../../constants/auth.constants.ts";
-import { sendOtpEmail } from "../../mails/auth/registerOtp.mails.ts";
-import { sendWelcomeEmail } from "../../mails/user/welcome.mails.ts";
-import { sendLoginOtp } from "../../mails/auth/loginOtp.mails.ts";
-import { sendEnable2FAOtpEmail } from "../../mails/user/sendEnable2FAOtpEmail.ts";
-import { sendEnable2FAEmail } from "../../mails/user/sendEnable2FAEmail.ts";
-import { resetPasswordOtp } from "../../mails/auth/resetPasswordOTP.ts";
 import {
   generateOTP,
   verifyOTP,
   generateToken,
   verifyToken,
 } from "../../utils/core.ts";
+import {
+  sendLoginOtp,
+  sendRegisterOTP,
+  sendWelcomeEmail,
+  sendResendOTP,
+  sendDeleteAccount,
+  sendAccountRecoveryEmail,
+  sendEnable2FAEmail,
+  sendEnable2FAEmailOTP,
+  resetPasswordOtp
+} from "../../mails/email-producer.ts";
 import {
   getClientIp,
   getDeviceInfo,
@@ -36,9 +41,7 @@ import {
 import type { LoginAttempts } from "../../types/auth.types.ts";
 import { addDays } from "date-fns";
 import { ACCOUNT_DELETION_GRACE_DAYS } from "../../constants/user.constants.ts";
-import { sendAccountDeletionScheduledEmail } from "../../mails/user/AccountDeletionScheduledEmail.ts";
 import { formatUTCDate } from "../../utils/core.ts";
-import { sendAccountRecoveryEmail } from "../../mails/user/sendAccountRecoveryEmail.ts";
 
 export const registerStep1 = asyncHandler(
   async (
@@ -99,10 +102,7 @@ export const registerStep1 = asyncHandler(
       }),
     ]);
 
-    const emailSent = await sendOtpEmail({ email, otp });
-    if (!emailSent) {
-      throw new ApiError(400, "Something went wrong. Please try again later");
-    }
+    sendRegisterOTP({ email, otp });
 
     await redisClient.set(REDIS_KEYS.usernameAvailability(username), "0", {
       EX: 600,
@@ -192,12 +192,13 @@ export const registerStep2 = asyncHandler(
 
     const { password: _, ...userWithoutPassword } = newUser;
 
+    sendWelcomeEmail({email: user.email, name: user.name});
+
     await Promise.all([
       redisClient.del(REDIS_KEYS.registerOtp(token)),
       redisClient.del(REDIS_KEYS.userTemp(tokenhash.tokenHash)),
       redisClient.del(verifyLimitKey),
       prisma.tokenHash.deleteMany({ where: { token } }),
-      sendWelcomeEmail({ email: user.email, name: user.username }),
       redisClient.del(REDIS_KEYS.usernameAvailability(newUser.username)),
     ]);
 
@@ -253,10 +254,7 @@ export const resendRegisterOTP = asyncHandler(async (req, res) => {
     redisClient.expire(REDIS_KEYS.userTemp(tokenhash.tokenHash), EXPIRES_IN),
   ]);
 
-  const emailSent = await sendOtpEmail({ email: user.email, otp });
-  if (!emailSent) {
-    throw new ApiError(400, "Something went wrong. Please try again later");
-  }
+  sendResendOTP({ email: user.email, otp });
 
   res.status(200).json({
     success: true,
@@ -361,10 +359,7 @@ export const login = asyncHandler(
       }),
     ]);
 
-    const emailSent = await sendLoginOtp({ email: user.email, otp });
-    if (!emailSent) {
-      throw new ApiError(400, "Something went wrong. Please try again later");
-    }
+    sendLoginOtp({ email: user.email, otp });
 
     // Mark identifier as processing login
     await redisClient.set(
@@ -499,10 +494,7 @@ export const resendLoginOTP = asyncHandler(async (req, res) => {
     EX: AUTH_OTP.EXPIRES_IN,
   });
 
-  const emailSent = await sendLoginOtp({ email: user.email, otp });
-  if (!emailSent) {
-    throw new ApiError(400, "Something went wrong. Please try again later");
-  }
+  sendResendOTP({ email: user.email, otp });
 
   return res.status(200).json({
     success: true,
@@ -576,14 +568,10 @@ export const enableOTPbasedLogin = asyncHandler(async (req, res) => {
     }),
   ]);
 
-  const emailSent = await sendEnable2FAOtpEmail({
+  sendEnable2FAEmailOTP({
     email: user.email,
     otp,
   });
-
-  if (!emailSent) {
-    throw new ApiError(500, "Failed to send OTP email");
-  }
 
   res.status(200).json({
     success: true,
@@ -662,7 +650,7 @@ export const verify2FAOTP = asyncHandler(async (req, res) => {
     select: { email: true },
   });
 
-  await sendEnable2FAEmail({
+  sendEnable2FAEmail({
     email: user!.email,
     device: device.deviceName || device.deviceType,
   });
@@ -821,14 +809,12 @@ export const resetPasswordStep1 = asyncHandler(async (req, res) => {
 
   const deviceLabel = `${device.deviceName} ${device.deviceType}, ${device.browser}, ${device.os}`;
 
-  const mailSent = await resetPasswordOtp({
+  resetPasswordOtp({
     email: user.email,
     otp,
     requestedAt,
     device: deviceLabel,
   });
-
-  if (!mailSent) throw new ApiError(500, "Failed to send OTP");
 
   await prisma.$transaction([
     prisma.userOtp.create({
@@ -1169,7 +1155,7 @@ export const deleteAccount = asyncHandler(async (req, res) => {
 
   const device = getDeviceInfo(req);
 
-  sendAccountDeletionScheduledEmail({
+  sendDeleteAccount({
     email: user.email,
     requestedAt: formatUTCDate(new Date()),
     device: {
@@ -1178,7 +1164,7 @@ export const deleteAccount = asyncHandler(async (req, res) => {
       os: device.os ?? "Unknown OS",
       browser: device.browser ?? "Unknown browser",
     },
-  }).catch(() => {});
+  });
 
   return res.status(200).json({
     success: true,
@@ -1244,18 +1230,18 @@ export const recoverAccount = asyncHandler(async (req, res) => {
     }),
 
     redisClient.del(REDIS_KEYS.userdata(userId)),
-
-    sendAccountRecoveryEmail({
-      email: user.email,
-      device: {
-        name: device.deviceName ?? "Unknown device",
-        type: device.deviceType ?? "Unknown type",
-        os: device.os ?? "Unknown OS",
-        browser: device.browser ?? "Unknown browser",
-      },
-      recoveredAt: formatUTCDate(new Date())
-    }),
   ]);
+
+  sendAccountRecoveryEmail({
+    email: user.email,
+    device: {
+      name: device.deviceName ?? "Unknown device",
+      type: device.deviceType ?? "Unknown type",
+      os: device.os ?? "Unknown OS",
+      browser: device.browser ?? "Unknown browser",
+    },
+    recoveredAt: formatUTCDate(new Date())
+  });
 
   return res.status(200).json({
     success: true,

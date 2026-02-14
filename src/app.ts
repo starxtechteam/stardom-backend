@@ -1,4 +1,7 @@
 import express from "express";
+import path from "node:path";
+import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 import helmet from "helmet";
 import cookieParser from "cookie-parser";
 import compression from 'compression';
@@ -11,6 +14,7 @@ import { swaggerSpec } from "./config/swagger.ts";
 import apiRoutes from "./routes/api.routes.ts";
 import { errorMiddleware } from "./middlewares/error.middleware.ts";
 import "./config/prisma.config.ts";
+import "./jobs/email-worker.js";
 
 const app = express();
 
@@ -43,6 +47,22 @@ app.use(compression());
 // Swagger documentation
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
+const appFilePath = fileURLToPath(import.meta.url);
+const appDirPath = path.dirname(appFilePath);
+const publicDirCandidates = [
+  path.join(process.cwd(), "public"),
+  path.join(process.cwd(), "src", "public"),
+  path.join(appDirPath, "public"),
+];
+const publicDirPath = publicDirCandidates.find((dirPath) => fs.existsSync(dirPath));
+
+app.use("/public", express.static(publicDirPath ?? publicDirCandidates[0], {
+  dotfiles: "deny",
+  etag: true,
+  index: false,
+  maxAge: "7d",
+  immutable: true
+}));
 app.use("/api/v1", apiRoutes);
 app.use(errorMiddleware);
 

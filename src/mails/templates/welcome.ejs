@@ -1,47 +1,126 @@
 <!DOCTYPE html>
 <html>
+
 <head>
   <meta charset="UTF-8" />
-  <title>Welcome to <%= appName %></title>
+  <title>Welcome to <%= appName %>
+  </title>
 </head>
+
 <body style="margin:0; padding:0; background:#f5f7fa; font-family:Arial, sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0">
+
+  <!-- Wrapper -->
+  <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
     <tr>
-      <td align="center" style="padding:40px 0;">
-        <table width="480" style="background:#ffffff; border-radius:8px; padding:32px;">
+      <td align="center" style="padding:40px 10px;">
+
+        <!-- Card -->
+        <table width="480" cellpadding="0" cellspacing="0" role="presentation" style="
+            background:#ffffff;
+            border-radius:10px;
+            padding:32px;
+            box-shadow:0 2px 8px rgba(0,0,0,0.06);
+          ">
+
           <tr>
             <td align="center">
-              <h2 style="margin:0; color:#111;">
-                Welcome to <%= appName %> 🎉
+
+              <!-- Logo -->
+              <img src="<%= logoUrl %>" alt="<%= appName %> Logo" width="80"
+                style="margin-bottom:20px; display:block;" />
+
+              <!-- Header -->
+              <h2 style="margin:0 0 12px 0; color:#111;">
+                Welcome to <%= appName %> 🌟
               </h2>
 
-              <p style="color:#555; font-size:14px; margin-top:12px;">
-                Hi <b><%= name %></b>,
+              <!-- Greeting -->
+              <p style="margin:0 0 8px 0; color:#555; font-size:14px;">
+                Hi <strong>
+                  <%= name %>
+                </strong>,
               </p>
 
-              <p style="color:#555; font-size:14px; line-height:1.6;">
-                We’re excited to have you on <b><%= appName %></b>!  
-                Your account has been successfully created, and you’re all set to explore.
+              <!-- Main Message -->
+              <p style="margin:0 0 16px 0; color:#555; font-size:14px; line-height:1.6;">
+                We’re excited to have you join <strong>
+                  <%= appName %>
+                </strong> —
+                a place where you can connect, share, and shine online.
+                Your account is now ready to go!
               </p>
 
-              <p style="font-size:13px; color:#777;">
-                If you need any help, feel free to reach out to our support team.
+              <!-- Features -->
+              <p style="margin:0 0 12px 0; color:#374151; font-size:14px;">
+                Start your journey by:
               </p>
 
+              <ul style="
+                padding:0;
+                margin:0 0 20px 0;
+                list-style:none;
+                font-size:13px;
+                color:#555;
+                line-height:1.6;
+              ">
+                <li>✨ Completing your profile</li>
+                <li>📸 Posting your first photo or video</li>
+                <li>👥 Following friends and creators</li>
+                <li>💬 Liking and commenting on posts</li>
+              </ul>
+
+              <!-- CTA Button -->
+              <a href="<%= appUrl %>" style="
+                  display:inline-block;
+                  margin:10px 0 24px 0;
+                  padding:12px 28px;
+                  background:#2563eb;
+                  color:#ffffff;
+                  text-decoration:none;
+                  font-size:14px;
+                  border-radius:6px;
+                  font-weight:600;
+                ">
+                Open <%= appName %>
+              </a>
+
+              <!-- Motivation -->
+              <p style="margin:0 0 20px 0; font-size:13px; color:#777;">
+                Build your audience, express yourself, and become a star
+                in the <%= appName %> community ⭐
+              </p>
+
+              <!-- Support -->
+              <p style="margin:0 0 20px 0; font-size:13px; color:#777;">
+                Need help? Reach us at
+                <a href="<%= supportEmail %>" style="color:#2563eb; text-decoration:none;">
+                  <%= supportEmail %>
+                </a>
+              </p>
+
+              <!-- Divider -->
               <hr style="margin:24px 0; border:none; border-top:1px solid #eee;" />
 
-              <p style="font-size:12px; color:#999;">
-                You’re receiving this email because you signed up for <%= appName %>.
+              <!-- Footer -->
+              <p style="margin:0 0 6px 0; font-size:12px; color:#999;">
+                You’re receiving this email because you joined <%= appName %>.
               </p>
 
-              <p style="font-size:12px; color:#bbb;">
-                © <%= year %> <%= appName %>. All rights reserved.
+              <p style="margin:0; font-size:12px; color:#bbb;">
+                © <%= year %>
+                  <%= appName %>. All rights reserved.
               </p>
+
             </td>
           </tr>
+
         </table>
+        <!-- End Card -->
+
       </td>
     </tr>
   </table>
+
 </body>
+
 </html>
