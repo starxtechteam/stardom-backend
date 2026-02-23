@@ -29,6 +29,11 @@ const router = express.Router();
  *     description: |
  *       Authentication endpoints for user registration, login, and password management.
  *       - Login
+ *   - name: Post
+ *     description: |
+ *       Post creation and media upload preparation endpoints.
+ *       - Generate presigned URLs for image/video/reel uploads
+ *       - Create text, image, video, and reel posts
  */
 
 router.use('/auth', authRoutes);
