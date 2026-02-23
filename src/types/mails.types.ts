@@ -40,3 +40,12 @@ export interface ResetPassword {
   requestedAt: string;
   device: string;
 }
+
+export interface PostNotify {
+  email: string, 
+  authorName: string, 
+  authorAvatarUrl: string,
+  followerName: string, 
+  postUrl: string, 
+  postDate: string
+}

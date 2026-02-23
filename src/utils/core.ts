@@ -74,3 +74,14 @@ export function formatUTCDate(date: Date | string) {
   }) + " UTC";
 }
 
+export function cropText(text: string, maxLength = 100) {
+  if (text.length <= maxLength) return text;
+  return text.slice(0, maxLength) + "...";
+}
+
+export function cropByWord(text:string, maxLength = 100) {
+  if (text.length <= maxLength) return text;
+
+  const trimmed = text.slice(0, maxLength);
+  return trimmed.slice(0, trimmed.lastIndexOf(" ")) + "...";
+}
