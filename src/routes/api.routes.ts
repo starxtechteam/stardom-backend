@@ -2,6 +2,7 @@ import express from "express";
 import authRoutes from "../modules/auth/auth.routes.js";
 import userRoutes from "../modules/user/user.routes.ts";
 import adminRoutes from "../modules/admin/admin.routes.ts";
+import postRoutes from "../modules/post/post.routes.ts";
 const router = express.Router();
 
 /**
@@ -33,5 +34,6 @@ const router = express.Router();
 router.use('/auth', authRoutes);
 router.use('/user', userRoutes);
 router.use('/admin', adminRoutes);
+router.use('/post', postRoutes);
 
 export default router;

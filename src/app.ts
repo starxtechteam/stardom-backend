@@ -15,6 +15,7 @@ import apiRoutes from "./routes/api.routes.ts";
 import { errorMiddleware } from "./middlewares/error.middleware.ts";
 import "./config/prisma.config.ts";
 import "./jobs/email-worker.js";
+import "./jobs/notification-worker.js";
 
 const app = express();
 

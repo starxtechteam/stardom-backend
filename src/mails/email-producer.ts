@@ -1,9 +1,9 @@
 import ejs from "ejs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { emailQueue } from "../config/email-queue.ts";
+import { emailQueue } from "../config/queue.ts";
 import { ENV } from "../config/env.ts";
-import { DeleteAccount, enable2FA, RecoverAccount, ResetPassword, SendMailOptions, SendOtpEmailProps, SendWelcome } from "../types/mails.types.ts";
+import { DeleteAccount, enable2FA, PostNotify, RecoverAccount, ResetPassword, SendMailOptions, SendOtpEmailProps, SendWelcome } from "../types/mails.types.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -14,16 +14,21 @@ async function sendMail({
   subject,
   email,
   data,
-}: SendMailOptions) {
-    const templatePath = path.join(__dirname, `./templates/${template}`);
+}: SendMailOptions): Promise<boolean> {
+    try{
+        const templatePath = path.join(__dirname, `./templates/${template}`);
 
-    const html: string = await ejs.renderFile(templatePath, data);
+        const html: string = await ejs.renderFile(templatePath, data);
 
-    await emailQueue.add(subject, {
-        email,
-        subject,
-        html,
-    });
+        await emailQueue.add(subject, {
+            email,
+            subject,
+            html,
+        });
+        return true;
+    } catch(err){
+        return false;
+    }
 }
 
 export function sendLoginOtp({ email, otp }: SendOtpEmailProps) {
@@ -210,6 +215,23 @@ export function sendAdminLoginOtp({email, otp}: SendOtpEmailProps){
             logoUrl: ENV.LOGO_URL,
             otp,
             expiresIn: 5,
+            year: FULL_YEAR,
+        },
+    });
+}
+
+export function sendPostNotify({email, authorName, authorAvatarUrl, followerName, postUrl, postDate}: PostNotify){
+    return sendMail({
+        template: "post-upload-notification.ejs",
+        subject: `${ENV.APP_NAME} - New Post from ${authorName}`,
+        email,
+        data: {
+            appName: ENV.APP_NAME,
+            authorName,
+            authorAvatarUrl: authorAvatarUrl || `${ENV.BACKEND_URL}/public/user_default.webp`,
+            followerName,
+            postUrl,
+            postDate,
             year: FULL_YEAR,
         },
     });

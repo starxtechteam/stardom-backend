@@ -70,6 +70,8 @@ model User {
   isPremium   Boolean   @default(false)
   premiumEnds DateTime?
 
+  fcmToken   String?
+
   lastSeenAt DateTime?
   deletedAt  DateTime?
 
@@ -92,6 +94,7 @@ model User {
   comments  Comment[]
   postViews PostView[]
   bookmarks Bookmark[]
+  hashtag   Hashtag[]
 
   // 🔔 FIXED NOTIFICATION RELATIONS
   notifications      Notification[] @relation("UserNotifications") // received
@@ -486,6 +489,8 @@ model Post {
   content  String?
   postType PostType
 
+  images   String[] @default([])
+
   mediaUrl     String?
   thumbnailUrl String?
   durationSec  Int?
@@ -583,7 +588,14 @@ model Hashtag {
   id  String @id @default(uuid()) @db.Uuid
   tag String @unique
 
+  createdBy String @db.Uuid
+  user User @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+
   posts PostHashtag[]
+
+  @@unique([tag, createdBy])
 }
 
 model PostHashtag {

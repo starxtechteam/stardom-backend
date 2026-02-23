@@ -45,7 +45,9 @@ const envSchema = z.object({
 
   APP_URL: z.string(),
   LOGO_URL: z.string(),
-  SUPPORT_EMAIL: z.string()
+  SUPPORT_EMAIL: z.string(),
+
+  BACKEND_URL: z.url(),
 });
 
 export const ENV = envSchema.parse(process.env);

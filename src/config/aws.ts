@@ -32,7 +32,7 @@ const bucket = ENV.S3_BUCKET_NAME;
 export async function generateUploadURL(
   contentType: string,
   filename: string | null = null
-): Promise<{ url: string; key: string }> {
+): Promise<{ url: string; key: string, contentType: string }> {
   const ext = contentType.split("/")[1] ?? "bin";
   const fileKey = filename ? `${filename}.${ext}` : `${uuidv4()}.${ext}`;
 
@@ -43,13 +43,13 @@ export async function generateUploadURL(
   });
 
   const url = await getSignedUrl(s3, command, { expiresIn: 300 });
-  return { url, key: fileKey };
+  return { url, key: fileKey, contentType };
 }
 
 export async function generateMultipleUploadURLs(
   contentTypes: string[] = []
-): Promise<Array<{ url: string; key: string }>> {
-  const uploads: Array<{ url: string; key: string }> = [];
+): Promise<Array<{ url: string; key: string, contentType: string }>> {
+  const uploads: Array<{ url: string; key: string, contentType: string }> = [];
 
   for (const type of contentTypes) {
     const upload = await generateUploadURL(type);
