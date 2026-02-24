@@ -1,6 +1,13 @@
 import { z } from "zod";
 import { validationInput } from "../../utils/validation.ts";
 
+const uuidRegex =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const uuidSchema = z.object({
+    postId: z.string().regex(uuidRegex, "Invalid UUID format")
+});
+
 const presignedUrlSchema = z.object({
     postType: z.enum(["image", "video", "reel"], {
         message: "Invalid post type",
@@ -58,3 +65,4 @@ const postSchema = z.discriminatedUnion("postType", [
 
 export const createPostValidation = validationInput(postSchema);
 export const presignedUrlValidation = validationInput(presignedUrlSchema);
+export const postIdValidation = validationInput(uuidSchema, "params");

@@ -18,7 +18,7 @@ const askConfirmation = (question: string) => {
 (async () => {
   const keysArray = await getAllKeys();
 
-  const arr = ["video.mp4", "premium.mp4", "logo.png"];
+  const arr = ["logo.png"];
 
   // exclude to file "logo.png" and "video.mp4" from keysArray
   const filteredKeys = keysArray.filter(key => !arr.includes(key));

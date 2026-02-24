@@ -3,7 +3,7 @@ import { ApiError } from "../../utils/api-error.js";
 import { prisma } from "../../config/prisma.config.ts";
 import { redisClient, REDIS_KEYS } from "../../config/redis.config.ts";
 import { bulkNotificationQueue } from "../../config/queue.ts";
-import { generateMultipleUploadURLs, generateUploadURL } from "../../config/aws.ts";
+import { deleteFile, deleteFiles, generateMultipleUploadURLs, generateUploadURL } from "../../config/aws.ts";
 import { getClientIp } from "../auth/auth.service.ts";
 import { verifyFileKey, verifyFileKeys } from "./post.services.ts";
 
@@ -290,7 +290,76 @@ export const createPost = asyncHandler(async(req, res) => {
 
     return res.status(200).json({
         success: true,
-        message: "New post created.",
-        post: post
+        message: "New post created."
+    });
+});
+
+export const deletePost = asyncHandler(async(req, res) => {
+    const userId = req.session?.userId;
+    const { postId } = req.params;
+
+    if(!userId){
+        throw new ApiError(401, "Unautherized");
+    }
+
+    if(!postId){
+        throw new ApiError(400, "Post id is required");
+    }
+
+    const post = await prisma.post.findFirst({
+        where: {id: postId},
+        include: {
+            user: {
+                select: {
+                    id: true,
+                    username: true,
+                    email: true,
+                    status: true
+                }
+            }
+        }
+    });
+
+    if(!post){
+        throw new ApiError(400, "Invaild post id");
+    }
+
+    if(post.user.id !== userId){
+        throw new ApiError(403, "Forbiden");
+    }
+
+    if(post.user.status !== "active"){
+        throw new ApiError(400, `Your account is ${post.user.status}`);
+    }
+
+    if(post.postType === "image"){
+        const fileKeys = post.images;
+        await deleteFiles(fileKeys, userId);
+    }
+
+    if(post.postType === "video" || post.postType === "reel"){
+        if(post.mediaUrl) await deleteFile(post.mediaUrl, userId);
+        if(post.thumbnailUrl) await deleteFile(post.thumbnailUrl, userId);
+    }
+
+    if(post.postType === "reel"){
+        await prisma.reel.delete({
+            where: {postId: postId}
+        })
+    }
+
+    await prisma.$transaction([
+        prisma.postHashtag.deleteMany({
+            where: {postId:post.id}
+        }),
+
+        prisma.post.delete({
+            where:{id: postId}
+        }),
+    ]);
+
+    return res.status(200).json({
+        success: true,
+        message: "Post deleted sucessfully"
     });
 });

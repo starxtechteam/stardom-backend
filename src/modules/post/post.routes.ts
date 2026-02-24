@@ -1,11 +1,13 @@
 import express from "express";
 import {
     createPost,
-    generatePresignedUrl
+    deletePost,
+    generatePresignedUrl,
 } from "./post.controller.ts";
 import {
     createPostValidation,
-    presignedUrlValidation
+    presignedUrlValidation,
+    postIdValidation
 } from "./post.validation.ts";
 import { createVerifyToken } from "../../middlewares/auth.ts";
 
@@ -184,5 +186,7 @@ router.post('/presigned-url', presignedUrlValidation, generatePresignedUrl);
  *         description: Unauthorized - missing or invalid token
  */
 router.post('/', createPostValidation, createPost);
+
+router.delete("/:postId", postIdValidation, deletePost);
 
 export default router;

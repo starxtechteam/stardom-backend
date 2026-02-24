@@ -15,6 +15,7 @@ import { v4 as uuidv4 } from "uuid";
 import "dotenv/config";
 import { invalidateCache } from "./aws-cloudfront.ts";
 import { ENV } from "./env.ts";
+import { prisma } from "./prisma.config.ts";
 
 const s3 = new S3Client({
   region: ENV.AWS_REGION,
@@ -62,7 +63,7 @@ export async function generateMultipleUploadURLs(
 // ---------------
 // DELETE ONE FILE
 // ---------------
-export async function deleteFile(key: string): Promise<boolean> {
+export async function deleteFile(key: string, userId: string | null = null): Promise<boolean> {
   try {
     const cmd = new DeleteObjectCommand({
       Bucket: bucket,
@@ -71,6 +72,18 @@ export async function deleteFile(key: string): Promise<boolean> {
 
     // Invalidate CloudFront cache first (non-blocking is also an option)
     await invalidateCache([`/${key}`]);
+
+    if(userId){
+      await prisma.awsUploads.updateMany({
+          where: {
+              fileKey: key,
+              userId
+          },
+          data: {
+              status: "DELETED"
+          }
+      });
+    }
 
     await s3.send(cmd);
     return true;
@@ -84,7 +97,7 @@ export async function deleteFile(key: string): Promise<boolean> {
 // ----------------
 // DELETE MULTIPLE
 // ----------------
-export async function deleteFiles(keys: string[] = []): Promise<boolean> {
+export async function deleteFiles(keys: string[] = [], userId: string | null = null): Promise<boolean> {
   try {
     if (!keys.length) return false;
 
@@ -99,6 +112,20 @@ export async function deleteFiles(keys: string[] = []): Promise<boolean> {
 
     // Invalidate CloudFront cache
     await invalidateCache(keys.map((key) => `/${key}`));
+
+    if(userId){
+      await prisma.awsUploads.updateMany({
+        where: {
+            fileKey: {
+                in: keys
+            },
+            userId
+        },
+        data: {
+            status: "DELETED"
+        }
+      });
+    }
 
     await s3.send(cmd);
     return true;
