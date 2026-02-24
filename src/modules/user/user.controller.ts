@@ -219,22 +219,7 @@ export const updateAvatarUrl = asyncHandler(async (req, res) => {
     const oldKey = user.avatarUrl.replace(`${ENV.AWS_CDN_URL}/`, "");
 
     try {
-      await prisma.awsUploads.updateMany({
-        where: {
-          fileKey: oldKey,
-          userId,
-          status: "USED",
-        },
-        data: {
-          status: "DELETED",
-        },
-      });
-
-      deleteFile(oldKey).catch((err) => {
-        logger.error(
-          `Failed to delete old profile image for user ${userId}: ${err?.message}`,
-        );
-      });
+      await deleteFile(oldKey, userId);
     } catch (err) {
       logger.error(
         `Failed to mark old avatar as DELETED for user ${userId}: ${(err as Error).message}`,
@@ -335,22 +320,7 @@ export const updateBannerUrl = asyncHandler(async (req, res) => {
     const oldKey = user.bannerUrl.replace(`${ENV.AWS_CDN_URL}/`, "");
 
     try {
-      await prisma.awsUploads.updateMany({
-        where: {
-          fileKey: oldKey,
-          userId,
-          status: "USED",
-        },
-        data: {
-          status: "DELETED",
-        },
-      });
-
-      deleteFile(oldKey).catch((err) => {
-        logger.error(
-          `Failed to delete old banner image for user ${userId}: ${err?.message}`,
-        );
-      });
+      await deleteFile(oldKey, userId);
     } catch (err) {
       logger.error(
         `Failed to mark old banner as DELETED for user ${userId}: ${(err as Error).message}`,
