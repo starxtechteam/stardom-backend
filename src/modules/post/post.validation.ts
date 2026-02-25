@@ -68,9 +68,16 @@ const postSchema = z.discriminatedUnion("postType", [
 const repostFields = uuidSchema.extend({
     content: z.string().max(1000, "Maximum 1000 characters").optional(),
     visibility: z.enum(["public", "private", "followers"])
-})
+});
+
+const updatePostFields = uuidSchema.extend({
+    content: z.string().max(1000, "Maximum 1000 characters").optional(),
+    visibility: z.enum(["public", "private", "followers"]),
+    status: z.enum(["active", "archived", "draft"])
+});
 
 export const createPostValidation = validationInput(postSchema);
 export const presignedUrlValidation = validationInput(presignedUrlSchema);
 export const postIdValidation = validationInput(uuidSchema, "params");
 export const repostValidation = validationInput(repostFields);
+export const updateValidation = validationInput(updatePostFields);

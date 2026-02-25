@@ -4,12 +4,15 @@ import {
     deletePost,
     rePost,
     generatePresignedUrl,
+    updatePost,
+    bookmarkPost,
 } from "./post.controller.ts";
 import {
     createPostValidation,
     presignedUrlValidation,
     postIdValidation,
     repostValidation,
+    updateValidation,
 } from "./post.validation.ts";
 import { createVerifyToken } from "../../middlewares/auth.ts";
 
@@ -189,8 +192,148 @@ router.post('/presigned-url', presignedUrlValidation, generatePresignedUrl);
  */
 router.post('/', createPostValidation, createPost);
 
+/**
+ * @swagger
+ * /api/v1/post/update:
+ *   put:
+ *     summary: Update a post
+ *     description: Update content, visibility, or status of a post owned by the authenticated user.
+ *     tags: [Post]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - postId
+ *               - visibility
+ *               - status
+ *             properties:
+ *               postId:
+ *                 type: string
+ *                 format: uuid
+ *               content:
+ *                 type: string
+ *                 maxLength: 1000
+ *               visibility:
+ *                 type: string
+ *                 enum: [public, private, followers]
+ *               status:
+ *                 type: string
+ *                 enum: [active, archived, draft]
+ *     responses:
+ *       200:
+ *         description: Post updated successfully
+ *       400:
+ *         description: Invalid request or post not found
+ *       401:
+ *         description: Unauthorized - missing or invalid token
+ *       403:
+ *         description: Forbidden - post does not belong to authenticated user
+ */
+router.put('/update', updateValidation, updatePost);
+
+/**
+ * @swagger
+ * /api/v1/post/{postId}:
+ *   delete:
+ *     summary: Delete a post
+ *     description: Delete a post owned by the authenticated user.
+ *     tags: [Post]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: postId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Post deleted successfully
+ *       400:
+ *         description: Invalid post id or bad request
+ *       401:
+ *         description: Unauthorized - missing or invalid token
+ *       403:
+ *         description: Forbidden - post does not belong to authenticated user
+ */
 router.delete("/:postId", postIdValidation, deletePost);
 
+/**
+ * @swagger
+ * /api/v1/post/repost:
+ *   post:
+ *     summary: Repost a post
+ *     description: Create a repost of an existing post for the authenticated user.
+ *     tags: [Post]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - postId
+ *               - visibility
+ *             properties:
+ *               postId:
+ *                 type: string
+ *                 format: uuid
+ *               content:
+ *                 type: string
+ *                 maxLength: 1000
+ *               visibility:
+ *                 type: string
+ *                 enum: [public, private, followers]
+ *     responses:
+ *       200:
+ *         description: Post reposted successfully
+ *       400:
+ *         description: Invalid request, repost limit reached, or duplicate repost
+ *       401:
+ *         description: Unauthorized - missing or invalid token
+ *       403:
+ *         description: Forbidden - cannot repost this post
+ *       404:
+ *         description: Post not found
+ */
 router.post('/repost', repostValidation, rePost);
+
+/**
+ * @swagger
+ * /api/v1/post/bookmark/{postId}:
+ *   post:
+ *     summary: Bookmark a post
+ *     description: Add a post to the authenticated user's bookmarks.
+ *     tags: [Post]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: postId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Post bookmarked successfully
+ *       400:
+ *         description: Invalid request, post inactive, or already bookmarked
+ *       401:
+ *         description: Unauthorized - missing or invalid token
+ *       403:
+ *         description: Forbidden - account is not active
+ *       404:
+ *         description: User or post not found
+ */
+router.post('/bookmark/:postId', postIdValidation, bookmarkPost);
 
 export default router;
