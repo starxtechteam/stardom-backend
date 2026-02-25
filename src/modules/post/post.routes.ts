@@ -2,12 +2,14 @@ import express from "express";
 import {
     createPost,
     deletePost,
+    rePost,
     generatePresignedUrl,
 } from "./post.controller.ts";
 import {
     createPostValidation,
     presignedUrlValidation,
-    postIdValidation
+    postIdValidation,
+    repostValidation,
 } from "./post.validation.ts";
 import { createVerifyToken } from "../../middlewares/auth.ts";
 
@@ -188,5 +190,7 @@ router.post('/presigned-url', presignedUrlValidation, generatePresignedUrl);
 router.post('/', createPostValidation, createPost);
 
 router.delete("/:postId", postIdValidation, deletePost);
+
+router.post('/repost', repostValidation, rePost);
 
 export default router;
