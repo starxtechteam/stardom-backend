@@ -22,6 +22,8 @@ const basePostFields = {
         .array(z.string().min(1, "Tag cannot be empty").max(100, "Maximum 100 tags"))
         .max(20, "Maximum 20 tags allowed")
         .optional(),
+    visibility: z.enum(["public", "private", "followers"]),
+    status: z.enum(["active", "archived", "draft"])
 };
 
 const postSchema = z.discriminatedUnion("postType", [
@@ -63,6 +65,12 @@ const postSchema = z.discriminatedUnion("postType", [
     })
 ]);
 
+const repostFields = uuidSchema.extend({
+    content: z.string().max(1000, "Maximum 1000 characters").optional(),
+    visibility: z.enum(["public", "private", "followers"])
+})
+
 export const createPostValidation = validationInput(postSchema);
 export const presignedUrlValidation = validationInput(presignedUrlSchema);
 export const postIdValidation = validationInput(uuidSchema, "params");
+export const repostValidation = validationInput(repostFields);

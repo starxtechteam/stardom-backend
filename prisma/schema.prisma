@@ -454,6 +454,7 @@ enum PostType {
   image
   video
   reel
+  repost
 }
 
 enum NotificationType {

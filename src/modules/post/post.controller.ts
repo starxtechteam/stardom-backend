@@ -12,7 +12,7 @@ export const generatePresignedUrl = asyncHandler(async (req, res) => {
     const { mimeTypes, postType } = req.body;
 
     if (!userId) {
-        throw new ApiError(401, "Unauthorized");
+        throw new ApiError(401, "unauthorized");
     }
 
     const ip = getClientIp(req);
@@ -99,11 +99,11 @@ export const generatePresignedUrl = asyncHandler(async (req, res) => {
 });
 
 export const createPost = asyncHandler(async(req, res) => {
-    const { postType, tags=[] } = req.body;
+    const { postType, tags=[], visibility, status } = req.body;
     const userId = req.session?.userId;
 
     if(!userId){
-        throw new ApiError(400, "user id not found");
+        throw new ApiError(401, "unauthorized");
     }
 
     const user = await prisma.user.findUnique({
@@ -147,6 +147,8 @@ export const createPost = asyncHandler(async(req, res) => {
                 userId,
                 content,
                 postType,
+                visibility,
+                status
             }
         });
 
@@ -169,7 +171,9 @@ export const createPost = asyncHandler(async(req, res) => {
                 userId,
                 content,
                 postType,
-                images
+                images,
+                visibility,
+                status
             }
         });
 
@@ -200,7 +204,9 @@ export const createPost = asyncHandler(async(req, res) => {
                 postType,
                 mediaUrl,
                 thumbnailUrl,
-                durationSec
+                durationSec,
+                visibility,
+                status
             }
         });
 
@@ -229,7 +235,9 @@ export const createPost = asyncHandler(async(req, res) => {
                 postType,
                 mediaUrl,
                 thumbnailUrl,
-                durationSec
+                durationSec,
+                visibility,
+                status
             }
         });
 
@@ -299,7 +307,7 @@ export const deletePost = asyncHandler(async(req, res) => {
     const { postId } = req.params;
 
     if(!userId){
-        throw new ApiError(401, "Unautherized");
+        throw new ApiError(401, "Unauthorized");
     }
 
     if(!postId){
@@ -361,5 +369,81 @@ export const deletePost = asyncHandler(async(req, res) => {
     return res.status(200).json({
         success: true,
         message: "Post deleted sucessfully"
+    });
+});
+
+export const rePost = asyncHandler(async(req, res) => {
+    const { postId, content, visibility } = req.body;
+    const userId = req.session?.userId;
+
+    if(!userId){
+        throw new ApiError(401, "unauthorized");
+    }
+
+    if(!postId){
+        throw new ApiError(400, "Post_id is required");
+    }
+
+    const parent_post = await prisma.post.findUnique({
+        where:{id: postId}
+    });
+
+    if(!parent_post){
+        throw new ApiError(404, "Post not found");
+    }
+
+    if(parent_post.status !== "active"){
+        throw new ApiError(400, `Post is ${parent_post.status}`)
+    }
+
+    if(parent_post.visibility === "private"){
+        throw new ApiError(403, "You can't respost this post");
+    }
+
+    const alreadyReposted = await prisma.post.findFirst({
+        where: {
+            userId: userId,
+            parentPostId: parent_post.id,
+        }
+    });
+
+    if(alreadyReposted){
+        throw new ApiError(400, "You already reposted this.");
+    }
+
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const postLimit = await prisma.post.findMany({
+        where: {
+            userId,
+            postType:"repost",
+            createdAt: {
+                gte: startOfToday,
+            },
+        },
+    });
+
+    if(postLimit.length > 10){
+        throw new ApiError(400, "Post limit reached of today");
+    }
+
+    const newPost = await prisma.post.create({
+        data:{
+            userId,
+            content,
+            postType: "repost",
+            isReply: true,
+            parentPostId: parent_post.id,
+            visibility
+        }
+    });
+
+    if(!newPost){
+        throw new ApiError(400, "something went wrong please try later.")
+    }
+
+    return res.status(200).json({
+        success: true,
+        message: "Post reposted"
     });
 });
