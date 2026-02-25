@@ -502,3 +502,61 @@ export const rePost = asyncHandler(async(req, res) => {
         message: "Post reposted"
     });
 });
+
+export const bookmarkPost = asyncHandler(async (req, res) => {
+    const {postId} = req.params;
+    const userId = req.session?.userId;
+
+    if (!userId || !postId) {
+        throw new ApiError(400, "Invalid request");
+    }
+
+    const [user, post] = await Promise.all([
+        prisma.user.findUnique({
+            where: { id: userId },
+            select: { id: true, status: true }
+        }),
+
+        prisma.post.findUnique({
+            where: { id: postId },
+            select: { id: true, status: true }
+        })
+    ]);
+
+    if (!user) {
+        throw new ApiError(404, "User not found");
+    }
+
+    if (user.status !== "active") {
+        throw new ApiError(403, `Your account is ${user.status}`);
+    }
+
+    if (!post) {
+        throw new ApiError(404, "Post not found");
+    }
+
+    if (post.status !== "active") {
+        throw new ApiError(400, `Post is ${post.status}`);
+    }
+
+    try {
+        await prisma.bookmark.create({
+            data: {
+                userId,
+                postId
+            }
+        });
+    } catch (error : any) {
+        // Handle duplicate bookmark
+        if (error.code === "P2002") {
+            throw new ApiError(400, "You have already bookmarked this post");
+        }
+
+        throw new ApiError(500, "Something went wrong");
+    }
+
+    return res.status(200).json({
+        success: true,
+        message: "Post bookmarked successfully"
+    });
+});
