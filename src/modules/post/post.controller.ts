@@ -302,6 +302,61 @@ export const createPost = asyncHandler(async(req, res) => {
     });
 });
 
+export const updatePost = asyncHandler(async(req, res) => {
+    const { postId, content, visibility, status } = req.body;
+    const userId = req.session?.userId;
+
+    if(!userId || !postId){
+        throw new ApiError(400, "Invaild request");
+    }
+
+    const post = await prisma.post.findFirst({
+        where: {id: postId},
+        include: {
+            user: {
+                select: {
+                    id: true,
+                    status: true,
+                }
+            }
+        }
+    });
+
+    if(!post){
+        throw new ApiError(400, "Post not found");
+    }
+
+    if(post.userId !== userId){
+        throw new ApiError(403, "Forbidden");
+    }
+
+    if(!post.user){
+        throw new ApiError(400, "user not found");
+    }
+
+    if(post.user.status !== "active"){
+        throw new ApiError(400, `Your account is ${post.user.status}`);
+    }
+
+    const isUpdated = await prisma.post.update({
+        where: {id: postId},
+        data:{
+            content,
+            status,
+            visibility
+        }
+    });
+
+    if(!isUpdated){
+        throw new ApiError(400, "Something went wrong, Please try again later.")
+    }
+
+    return res.status(200).json({
+        success: true,
+        message: "Post updated successfully"
+    });
+});
+
 export const deletePost = asyncHandler(async(req, res) => {
     const userId = req.session?.userId;
     const { postId } = req.params;

@@ -4,12 +4,14 @@ import {
     deletePost,
     rePost,
     generatePresignedUrl,
+    updatePost,
 } from "./post.controller.ts";
 import {
     createPostValidation,
     presignedUrlValidation,
     postIdValidation,
     repostValidation,
+    updateValidation,
 } from "./post.validation.ts";
 import { createVerifyToken } from "../../middlewares/auth.ts";
 
@@ -188,6 +190,8 @@ router.post('/presigned-url', presignedUrlValidation, generatePresignedUrl);
  *         description: Unauthorized - missing or invalid token
  */
 router.post('/', createPostValidation, createPost);
+
+router.put('/update', updateValidation, updatePost);
 
 router.delete("/:postId", postIdValidation, deletePost);
 
