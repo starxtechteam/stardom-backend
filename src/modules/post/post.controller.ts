@@ -6,6 +6,7 @@ import { bulkNotificationQueue } from "../../config/queue.ts";
 import { deleteFile, deleteFiles, generateMultipleUploadURLs, generateUploadURL } from "../../config/aws.ts";
 import { getClientIp } from "../auth/auth.service.ts";
 import { verifyFileKey, verifyFileKeys } from "./post.services.ts";
+import { success } from "zod";
 
 export const generatePresignedUrl = asyncHandler(async (req, res) => {
     const userId = req.session?.userId;
@@ -559,4 +560,69 @@ export const bookmarkPost = asyncHandler(async (req, res) => {
         success: true,
         message: "Post bookmarked successfully"
     });
+});
+
+export const likePost = asyncHandler(async(req, res) => {
+    const { postId } = req.params;
+    const userId = req.session?.userId;
+
+    if (!userId || !postId) {
+        throw new ApiError(400, "Invalid request");
+    }
+
+    const [user, post] = await Promise.all([
+        prisma.user.findUnique({
+            where: { id: userId },
+            select: { id: true, status: true }
+        }),
+
+        prisma.post.findUnique({
+            where: { id: postId },
+            select: { id: true, status: true, likeCount: true }
+        })
+    ]);
+
+    if (!user) {
+        throw new ApiError(404, "User not found");
+    }
+
+    if (user.status !== "active") {
+        throw new ApiError(403, `Your account is ${user.status}`);
+    }
+
+    if (!post) {
+        throw new ApiError(404, "Post not found");
+    }
+
+    if (post.status !== "active") {
+        throw new ApiError(400, `Post is ${post.status}`);
+    }
+
+    try{
+        await prisma.postLike.create({
+            data: {
+                userId, postId
+            }
+        });
+    } catch(error: any){
+        if (error.code === "P2002") {
+            throw new ApiError(400, "You have already liked this post");
+        }
+
+        throw new ApiError(500, "Something went wrong");
+    }
+
+    await prisma.post.update({
+        where: {id: postId},
+        data: {
+            likeCount: {
+                increment: 1
+            }
+        }
+    });
+
+    return res.status(200).json({
+        success: true,
+        message: "Post Liked"
+    })
 });

@@ -6,6 +6,7 @@ import {
     generatePresignedUrl,
     updatePost,
     bookmarkPost,
+    likePost
 } from "./post.controller.ts";
 import {
     createPostValidation,
@@ -335,5 +336,35 @@ router.post('/repost', repostValidation, rePost);
  *         description: User or post not found
  */
 router.post('/bookmark/:postId', postIdValidation, bookmarkPost);
+
+/**
+ * @swagger
+ * /api/v1/post/like/{postId}:
+ *   patch:
+ *     summary: Like a post
+ *     description: Add a like to an active post for the authenticated user.
+ *     tags: [Post]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: postId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Post liked successfully
+ *       400:
+ *         description: Invalid request, post inactive, or already liked
+ *       401:
+ *         description: Unauthorized - missing or invalid token
+ *       403:
+ *         description: Forbidden - account is not active
+ *       404:
+ *         description: User or post not found
+ */
+router.patch('/like/:postId', postIdValidation, likePost);
 
 export default router;
