@@ -180,3 +180,37 @@ export function isReservedUsername(username: string) {
   return RESERVED_SET.has(username.toLowerCase());
 }
 
+
+async function checkUsernameUnique(username: string): Promise<boolean> {
+  const existingUser = await prisma.user.findFirst({
+    where: { username }
+  });
+
+  if(existingUser) return false;
+
+  const isAvailable = await redisClient.get(
+    REDIS_KEYS.usernameAvailability(username),
+  );
+  if (isAvailable === "0") return false;
+
+  return true;
+}
+
+export async function generateUniqueUsername(full_name: string) {
+  const baseName = full_name
+    .toLowerCase()
+    .replace(/\s+/g, "")        
+    .replace(/[^a-z0-9]/g, ""); 
+
+  const randomNum = Math.floor(100000 + Math.random() * 900000); 
+
+  // 3. Combine
+  let username = baseName + randomNum;
+  const isUnique = await checkUsernameUnique(username);
+
+  if (!isUnique) {
+    return generateUniqueUsername(full_name);
+  }
+
+  return username;
+}

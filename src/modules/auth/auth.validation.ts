@@ -120,6 +120,15 @@ const accountDeletion = z.object({
     .max(100, "Reason must not exceed 100 characters"),
 });
 
+const registerViaTNSchema = z.object({
+  full_name: z.string('Full name is required').min(3, "Minimum 3 charcters").max(100, "Maximum 100 charcters"),
+  email: z.email("Email is required").trim().toLowerCase(),
+  password: z.string('Password is required').min(3, "minium 3 charcters is required").max(200, "Invaild Password"),
+  country_code: z.string('country code is required').min(1, "Invaild country code").max(10, "Invaild country code"),
+  mobile_no: z.string('Phone number is required').min(10, "Invaild mobile number").max(20, "Invaild mobile number"),
+  apiKey: z.string().min(10, "key is required").max(200, "Invaild key")
+});
+
 export const registerValidation = validationInput(registerSchema);
 export const authVerify = validationInput(verifyAuthSchema);
 
@@ -134,3 +143,4 @@ export const resetPasswordValidate2 = validationInput(resetPasswordOtp);
 export const resetPasswordValidate3 = validationInput(resetPassword);
 export const disable2FAValidation = validationInput(disable2FASchema);
 export const accountValidation = validationInput(accountDeletion);
+export const registerViaTNValidation = validationInput(registerViaTNSchema);
