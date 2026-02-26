@@ -6,7 +6,8 @@ import {
     generatePresignedUrl,
     updatePost,
     bookmarkPost,
-    likePost
+    likePost,
+    dislikePost
 } from "./post.controller.ts";
 import {
     createPostValidation,
@@ -366,5 +367,35 @@ router.post('/bookmark/:postId', postIdValidation, bookmarkPost);
  *         description: User or post not found
  */
 router.patch('/like/:postId', postIdValidation, likePost);
+
+/**
+ * @swagger
+ * /api/v1/post/dislike/{postId}:
+ *   patch:
+ *     summary: Dislike a post
+ *     description: Remove the authenticated user's like from an active post.
+ *     tags: [Post]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: postId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Post disliked successfully
+ *       400:
+ *         description: Invalid request or post inactive
+ *       401:
+ *         description: Unauthorized - missing or invalid token
+ *       403:
+ *         description: Forbidden - account is not active
+ *       404:
+ *         description: User or post not found
+ */
+router.patch('/dislike/:postId', postIdValidation, dislikePost);
 
 export default router;
