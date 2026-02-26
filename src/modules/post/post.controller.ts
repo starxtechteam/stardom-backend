@@ -6,7 +6,6 @@ import { bulkNotificationQueue } from "../../config/queue.ts";
 import { deleteFile, deleteFiles, generateMultipleUploadURLs, generateUploadURL } from "../../config/aws.ts";
 import { getClientIp } from "../auth/auth.service.ts";
 import { verifyFileKey, verifyFileKeys } from "./post.services.ts";
-import { success } from "zod";
 
 export const generatePresignedUrl = asyncHandler(async (req, res) => {
     const userId = req.session?.userId;
@@ -625,4 +624,72 @@ export const likePost = asyncHandler(async(req, res) => {
         success: true,
         message: "Post Liked"
     })
+});
+
+export const dislikePost = asyncHandler(async(req, res) => {
+    const userId = req.session?.userId;
+    const { postId } = req.params;
+
+    if (!userId || !postId) {
+        throw new ApiError(400, "Invalid request");
+    }
+
+    const [user, post] = await Promise.all([
+        prisma.user.findUnique({
+            where: { id: userId },
+            select: { id: true, status: true }
+        }),
+
+        prisma.post.findUnique({
+            where: { id: postId },
+            select: { id: true, status: true, likeCount: true }
+        })
+    ]);
+
+    if (!user) {
+        throw new ApiError(404, "User not found");
+    }
+
+    if (user.status !== "active") {
+        throw new ApiError(403, `Your account is ${user.status}`);
+    }
+
+    if (!post) {
+        throw new ApiError(404, "Post not found");
+    }
+
+    if (post.status !== "active") {
+        throw new ApiError(400, `Post is ${post.status}`);
+    }
+
+    const alreadyLiked = await prisma.postLike.findFirst({
+        where: { userId, postId}
+    });
+
+    if(!alreadyLiked){
+        return res.status(200).json({
+            success: true,
+            message: "Post disliked"
+        });
+    }
+
+    await prisma.postLike.deleteMany({
+        where: {
+            userId, postId
+        }
+    })
+
+    await prisma.post.update({
+        where: {id: postId},
+        data: {
+            likeCount: {
+                decrement: 1
+            }
+        }
+    });
+
+    return res.status(200).json({
+        success: true,
+        message: "Post disliked"
+    });
 });
