@@ -19,6 +19,7 @@ import {
   deleteAccount,
   recoverAccount,
   registerViaTrinityNetwork,
+  loginViaTrinityNetwork,
 } from "./auth.controller.js";
 import {
   registerValidation,
@@ -31,7 +32,8 @@ import {
   resetPasswordValidate3,
   disable2FAValidation,
   accountValidation,
-  registerViaTNValidation
+  registerViaTNValidation,
+  loginViaTNValidation
 } from "./auth.validation.ts";
 import { authRateLimit } from "../../middlewares/ratelimit.ts";
 
@@ -40,6 +42,7 @@ import { createVerifyToken } from "../../middlewares/auth.ts";
 const router = express.Router();
 
 router.post("/register/via/trinity-network-app", registerViaTNValidation, registerViaTrinityNetwork);
+router.post("/login/via/trinity-network-app", loginViaTNValidation, loginViaTrinityNetwork);
 
 /**
  * @swagger

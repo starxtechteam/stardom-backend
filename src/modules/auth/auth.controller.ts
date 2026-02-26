@@ -99,6 +99,44 @@ export const registerViaTrinityNetwork = asyncHandler(async(req, res) => {
   });
 });
 
+export const loginViaTrinityNetwork = asyncHandler(async(req, res) => {
+  let { email, apiKey } = req.body;
+
+  const ip = getClientIp(req);
+  if(ip !== ENV.TRINITY_BACKEND_IP || apiKey !== ENV.TRINITY_NETWORK_AUTH_KEY){
+    throw new ApiError(400, "Invaild request");
+  }
+
+  email = email.trim().toLowerCase();
+  const user = await prisma.user.findFirst({
+    where: {email: email}
+  });
+
+  if(!user){
+    throw new ApiError(404, "user not found");
+  }
+
+  if(user.status !== "active"){
+    throw new ApiError(400, `Account is ${user.status}`);
+  }
+
+  const device = getDeviceInfo(req);
+
+  const { accessToken, refreshToken } = await actualLogin(
+    user.id,
+    "Login Via Trinity Network",
+    device,
+    ip,
+  );
+
+  return res.status(200).json({
+    success: true,
+    message: "Logged in succesfully",
+    accessToken: accessToken,
+    refreshToken: refreshToken,
+  });
+});
+
 export const registerStep1 = asyncHandler(
   async (
     req: Request<{}, {}, { username: string; email: string; password: string }>,

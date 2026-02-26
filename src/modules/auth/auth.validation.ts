@@ -129,6 +129,11 @@ const registerViaTNSchema = z.object({
   apiKey: z.string().min(10, "key is required").max(200, "Invaild key")
 });
 
+const loginViaTNSchema = z.object({
+  email: z.email("Email is required").trim().toLowerCase(),
+  apiKey: z.string().min(10, "key is required").max(200, "Invaild key")
+});
+
 export const registerValidation = validationInput(registerSchema);
 export const authVerify = validationInput(verifyAuthSchema);
 
@@ -144,3 +149,4 @@ export const resetPasswordValidate3 = validationInput(resetPassword);
 export const disable2FAValidation = validationInput(disable2FASchema);
 export const accountValidation = validationInput(accountDeletion);
 export const registerViaTNValidation = validationInput(registerViaTNSchema);
+export const loginViaTNValidation = validationInput(loginViaTNSchema);
