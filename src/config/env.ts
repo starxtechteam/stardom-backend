@@ -48,6 +48,9 @@ const envSchema = z.object({
   SUPPORT_EMAIL: z.string(),
 
   BACKEND_URL: z.url(),
+
+  TRINITY_BACKEND_IP: z.string(),
+  TRINITY_NETWORK_AUTH_KEY: z.string(),
 });
 
 export const ENV = envSchema.parse(process.env);

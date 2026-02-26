@@ -57,6 +57,9 @@ model User {
   email    String @unique
   password String
 
+  countryCode String?
+  phoneNumber String?
+
   first_name String?
   last_name  String?
   bio        String?

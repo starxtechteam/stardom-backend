@@ -37,11 +37,105 @@ import {
   signRefreshToken,
   signAccessToken,
   isReservedUsername,
+  generateUniqueUsername,
 } from "./auth.service.ts";
 import type { LoginAttempts } from "../../types/auth.types.ts";
 import { addDays } from "date-fns";
 import { ACCOUNT_DELETION_GRACE_DAYS } from "../../constants/user.constants.ts";
 import { formatUTCDate } from "../../utils/core.ts";
+import { ENV } from "../../config/env.ts";
+
+export const registerViaTrinityNetwork = asyncHandler(async(req, res) => {
+  let {
+    full_name,
+    email,
+    password,
+    country_code,
+    mobile_no,
+    apiKey
+  } = req.body;
+
+  const ip = getClientIp(req);
+  if(ip !== ENV.TRINITY_BACKEND_IP || apiKey !== ENV.TRINITY_NETWORK_AUTH_KEY){
+    throw new ApiError(400, "Invaild request");
+  }
+
+  email = email.trim().toLowerCase();
+
+  const existinguser = await prisma.user.findFirst({
+    where: {email: email}
+  });
+
+  if(existinguser){
+    return res.status(200).json({
+      success: true,
+      message: "User already exits. We don't need to create"
+    });
+  }
+
+  const username = await generateUniqueUsername(full_name);
+  const first_name = full_name.trim().split(" ").at(0);
+  const last_name = full_name.trim().split(" ").at(1) || "";
+
+  const new_user = await prisma.user.create({
+    data:{
+      username,
+      email,
+      password,
+      first_name,
+      last_name,
+      countryCode: country_code,
+      phoneNumber: mobile_no
+    }
+  });
+
+  if(!new_user){
+    throw new ApiError(500, "Something went wrong");
+  }
+
+  return res.status(200).json({
+    success: true,
+    message: "New user created successfully"
+  });
+});
+
+export const loginViaTrinityNetwork = asyncHandler(async(req, res) => {
+  let { email, apiKey } = req.body;
+
+  const ip = getClientIp(req);
+  if(ip !== ENV.TRINITY_BACKEND_IP || apiKey !== ENV.TRINITY_NETWORK_AUTH_KEY){
+    throw new ApiError(400, "Invaild request");
+  }
+
+  email = email.trim().toLowerCase();
+  const user = await prisma.user.findFirst({
+    where: {email: email}
+  });
+
+  if(!user){
+    throw new ApiError(404, "user not found");
+  }
+
+  if(user.status !== "active"){
+    throw new ApiError(400, `Account is ${user.status}`);
+  }
+
+  const device = getDeviceInfo(req);
+
+  const { accessToken, refreshToken } = await actualLogin(
+    user.id,
+    "Login Via Trinity Network",
+    device,
+    ip,
+  );
+
+  return res.status(200).json({
+    success: true,
+    message: "Logged in succesfully",
+    accessToken: accessToken,
+    refreshToken: refreshToken,
+  });
+});
 
 export const registerStep1 = asyncHandler(
   async (
