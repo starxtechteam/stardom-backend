@@ -67,6 +67,13 @@ export const registerViaTrinityNetwork = asyncHandler(async(req, res) => {
   });
 
   if(existinguser){
+    await prisma.trinityUserAuthenticate.create({
+      data: {
+        userId: existinguser.id,
+        logs: "already exits this user"
+      }
+    });
+
     return res.status(200).json({
       success: true,
       message: "User already exits. We don't need to create"
@@ -92,6 +99,16 @@ export const registerViaTrinityNetwork = asyncHandler(async(req, res) => {
   if(!new_user){
     throw new ApiError(500, "Something went wrong");
   }
+
+  await prisma.trinityUserAuthenticate.create({
+    data: {
+      userId: new_user.id,
+      logs: "Authenticated to trinity network app"
+    }
+  });
+
+  const joinDate = formatUTCDate(new_user.createdAt);
+  sendWelcomeEmail({email: new_user.email, name: full_name, username: new_user.username, joinDate});
 
   return res.status(200).json({
     success: true,
@@ -285,8 +302,8 @@ export const registerStep2 = asyncHandler(
     });
 
     const { password: _, ...userWithoutPassword } = newUser;
-
-    sendWelcomeEmail({email: user.email, name: user.name});
+    const joinDate = formatUTCDate(newUser.createdAt);
+    sendWelcomeEmail({email: user.email, name: user.name, username: newUser.username, joinDate});
 
     await Promise.all([
       redisClient.del(REDIS_KEYS.registerOtp(token)),

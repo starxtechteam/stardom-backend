@@ -113,6 +113,7 @@ model User {
 
   tokenHashes TokenHash[]
   deletionSchedule DeletionSchedule[]
+  trinityUserAuthenticate TrinityUserAuthenticate[]
 
   @@index([id], map: "idx_active_users")
 }
@@ -158,6 +159,15 @@ model TokenHash {
   
   createdAt DateTime @default(now())
   expiresAt DateTime?
+}
+
+model TrinityUserAuthenticate {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  logs String?
+  createdAt DateTime @default(now())
 }
 
 // =====================================================
