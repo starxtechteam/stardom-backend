@@ -61,7 +61,7 @@ export function sendRegisterOTP({ email, otp }: SendOtpEmailProps) {
     });
 }
 
-export function sendWelcomeEmail({ email, name }: SendWelcome){
+export function sendWelcomeEmail({ email, name, username, joinDate }: SendWelcome){
     return sendMail({
         template: "welcome.ejs",
         subject: `Welcome to ${ENV.APP_NAME}`,
@@ -70,9 +70,11 @@ export function sendWelcomeEmail({ email, name }: SendWelcome){
             appName: ENV.APP_NAME,
             logoUrl: ENV.LOGO_URL,
             name: name,
+            username: username,
             appUrl: ENV.APP_URL,
             supportEmail: ENV.SUPPORT_EMAIL,
             year: FULL_YEAR,
+            joinDate: joinDate
         },
     });
 }

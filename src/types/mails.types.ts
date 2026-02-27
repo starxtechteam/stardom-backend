@@ -15,6 +15,8 @@ export interface SendOtpEmailProps {
 export interface SendWelcome {
   email: string;
   name: string;
+  username: String;
+  joinDate: String;
 }
 
 export interface enable2FA {
