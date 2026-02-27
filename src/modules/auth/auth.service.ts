@@ -10,7 +10,6 @@ import type { JwtPayload } from "../../types/jwt.types.js";
 import { redisClient, REDIS_KEYS } from "../../config/redis.config.ts";
 import { AUTH_OTP } from "../../constants/auth.constants.ts";
 import { RESERVED_USERNAMES } from "../../constants/user.constants.ts";
-import { cropText } from "../../utils/core.ts";
 
 const MAX_ATTEMPTS = 5;
 const BLOCK_WINDOW_MINUTES = 15;
@@ -201,12 +200,13 @@ export async function generateUniqueUsername(full_name: string) {
   const baseName = full_name
     .toLowerCase()
     .replace(/\s+/g, "")        
-    .replace(/[^a-z0-9]/g, ""); 
+    .replace(/[^a-z0-9]/g, "")
+    .slice(0, 8); 
 
   const randomNum = Math.floor(100000 + Math.random() * 900000); 
 
   // 3. Combine
-  let username = cropText(baseName + randomNum, 10);
+  let username = baseName + randomNum;
   const isUnique = await checkUsernameUnique(username);
 
   if (!isUnique) {
