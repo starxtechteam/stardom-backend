@@ -9,6 +9,7 @@ import {
     likePost,
     dislikePost,
     commentOnPost,
+    editComment,
     deleteComment,
     replyOnComment,
 } from "./post.controller.ts";
@@ -21,6 +22,7 @@ import {
     commentValidation,
     deleteCommentValidation,
     commentReplyValidation,
+    editCommentValidation,
 } from "./post.validation.ts";
 import { createVerifyToken } from "../../middlewares/auth.ts";
 
@@ -446,6 +448,45 @@ router.patch('/dislike/:postId', postIdValidation, dislikePost);
  *         description: User or post not found
  */
 router.post('/comment', commentValidation, commentOnPost);
+
+/**
+ * @swagger
+ * /api/v1/post/comment:
+ *   put:
+ *     summary: Edit a comment
+ *     description: Update the authenticated user's existing comment on an active post.
+ *     tags: [Post]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - commentId
+ *               - content
+ *             properties:
+ *               commentId:
+ *                 type: string
+ *                 format: uuid
+ *               content:
+ *                 type: string
+ *                 maxLength: 1000
+ *     responses:
+ *       200:
+ *         description: Comment updated successfully
+ *       400:
+ *         description: Invalid request or post is not active
+ *       401:
+ *         description: Unauthorized - missing or invalid token
+ *       403:
+ *         description: Forbidden - account is not active or comment does not belong to user
+ *       404:
+ *         description: User or comment not found
+ */
+router.put('/comment', editCommentValidation, editComment);
 
 /**
  * @swagger
