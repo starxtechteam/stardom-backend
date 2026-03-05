@@ -115,6 +115,8 @@ model User {
   deletionSchedule DeletionSchedule[]
   trinityUserAuthenticate TrinityUserAuthenticate[]
 
+  sharePost SharePost[]
+
   @@index([id], map: "idx_active_users")
 }
 
@@ -491,6 +493,12 @@ enum PostStatus {
   deleted
 }
 
+enum SharePostStatus {
+  seen 
+  sent 
+  unsent 
+}
+
 // =======================
 // MODELS
 // =======================
@@ -532,6 +540,8 @@ model Post {
   hashtags      PostHashtag[]
   bookmarks     Bookmark[]
   notifications Notification[]
+
+  sharePost SharePost[]
 
   @@index([userId])
   @@index([createdAt(sort: Desc)])
@@ -623,6 +633,20 @@ model PostHashtag {
   hashtag Hashtag @relation(fields: [hashtagId], references: [id], onDelete: Cascade)
 
   @@id([postId, hashtagId])
+}
+
+model SharePost {
+  id  String @id @default(uuid()) @db.Uuid
+  
+  postId String @db.Uuid
+  post   Post   @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  userId String @db.Uuid
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  source SharePostStatus
+
+  createdAt DateTime @default(now())
 }
 
 model Bookmark {
