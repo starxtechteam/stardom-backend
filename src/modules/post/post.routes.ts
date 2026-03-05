@@ -8,7 +8,8 @@ import {
     bookmarkPost,
     likePost,
     dislikePost,
-    commentOnPost
+    commentOnPost,
+    deleteComment,
 } from "./post.controller.ts";
 import {
     createPostValidation,
@@ -17,6 +18,7 @@ import {
     repostValidation,
     updateValidation,
     commentValidation,
+    deleteCommentValidation,
 } from "./post.validation.ts";
 import { createVerifyToken } from "../../middlewares/auth.ts";
 
@@ -442,5 +444,39 @@ router.patch('/dislike/:postId', postIdValidation, dislikePost);
  *         description: User or post not found
  */
 router.post('/comment', commentValidation, commentOnPost);
+
+/**
+ * @swagger
+ * /api/v1/post/comment/{postId}/{commentId}:
+ *   delete:
+ *     summary: Delete a comment
+ *     description: Delete the authenticated user's comment from an active post.
+ *     tags: [Post]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: postId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *       - in: path
+ *         name: commentId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Comment deleted successfully
+ *       400:
+ *         description: Invalid request or post/account is not active
+ *       401:
+ *         description: Unauthorized - missing or invalid token
+ *       404:
+ *         description: Post not found or invalid comment id
+ */
+router.delete('/comment/:postId/:commentId', deleteCommentValidation, deleteComment);
 
 export default router;

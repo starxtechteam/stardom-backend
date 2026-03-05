@@ -789,3 +789,59 @@ export const commentOnPost = asyncHandler(async(req, res) => {
         newComment
     });
 });
+
+export const deleteComment = asyncHandler(async (req, res) => {
+    const userId = req.session?.userId;
+    const { postId, commentId } = req.params;
+
+    const post = await prisma.post.findUnique({
+        where: { id: postId },
+        select: {
+            status: true,
+            user: {
+                select: { status: true }
+            }
+        }
+    });
+
+    if (!post) {
+        throw new ApiError(404, "Post not found");
+    }
+
+    if (!post.user || post.user.status !== "active") {
+        throw new ApiError(400, `Your account is ${post.user?.status}`);
+    }
+
+    if (post.status !== "active") {
+        throw new ApiError(400, `Post is ${post.status}`);
+    }
+
+    const comment = await prisma.comment.findFirst({
+        where: {
+            id: commentId,
+            postId,
+            userId
+        },
+        select: {
+            id: true,
+            image: true
+        }
+    });
+
+    if (!comment) {
+        throw new ApiError(404, "Invalid comment id");
+    }
+
+    if (comment.image) {
+        await deleteFile(comment.image, userId);
+    }
+
+    await prisma.comment.delete({
+        where: { id: commentId }
+    });
+
+    return res.status(200).json({
+        success: true,
+        message: "Comment deleted successfully"
+    });
+});

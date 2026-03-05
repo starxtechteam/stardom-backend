@@ -82,9 +82,15 @@ const postComment = z.object({
     imageKey: z.string("Invaild Image url").max(500, "Invaild url").optional()
 });
 
+const deleteComment = z.object({
+    postId: z.string().regex(uuidRegex, "Invalid UUID format"),
+    commentId: z.string().regex(uuidRegex, "Invalid UUID format"),
+});
+
 export const createPostValidation = validationInput(postSchema);
 export const presignedUrlValidation = validationInput(presignedUrlSchema);
 export const postIdValidation = validationInput(uuidSchema, "params");
 export const repostValidation = validationInput(repostFields);
 export const updateValidation = validationInput(updatePostFields);
 export const commentValidation = validationInput(postComment);
+export const deleteCommentValidation = validationInput(deleteComment, "params");
