@@ -76,8 +76,15 @@ const updatePostFields = uuidSchema.extend({
     status: z.enum(["active", "archived", "draft"])
 });
 
+const postComment = z.object({
+    postId: z.string().regex(uuidRegex, "Invalid UUID format"),
+    content: z.string().max(1000, "Maximum 1000 characters"),
+    imageKey: z.string("Invaild Image url").max(500, "Invaild url").optional()
+});
+
 export const createPostValidation = validationInput(postSchema);
 export const presignedUrlValidation = validationInput(presignedUrlSchema);
 export const postIdValidation = validationInput(uuidSchema, "params");
 export const repostValidation = validationInput(repostFields);
 export const updateValidation = validationInput(updatePostFields);
+export const commentValidation = validationInput(postComment);

@@ -7,7 +7,8 @@ import {
     updatePost,
     bookmarkPost,
     likePost,
-    dislikePost
+    dislikePost,
+    commentOnPost
 } from "./post.controller.ts";
 import {
     createPostValidation,
@@ -15,6 +16,7 @@ import {
     postIdValidation,
     repostValidation,
     updateValidation,
+    commentValidation,
 } from "./post.validation.ts";
 import { createVerifyToken } from "../../middlewares/auth.ts";
 
@@ -397,5 +399,48 @@ router.patch('/like/:postId', postIdValidation, likePost);
  *         description: User or post not found
  */
 router.patch('/dislike/:postId', postIdValidation, dislikePost);
+
+/**
+ * @swagger
+ * /api/v1/post/comment:
+ *   post:
+ *     summary: Comment on a post
+ *     description: Add a comment to an active post as the authenticated user, with optional image attachment.
+ *     tags: [Post]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - postId
+ *               - content
+ *             properties:
+ *               postId:
+ *                 type: string
+ *                 format: uuid
+ *               content:
+ *                 type: string
+ *                 maxLength: 1000
+ *               imageKey:
+ *                 type: string
+ *                 maxLength: 500
+ *                 description: Optional uploaded image file key
+ *     responses:
+ *       200:
+ *         description: Comment created successfully
+ *       400:
+ *         description: Invalid request, inactive post, invalid image key, or comment limit reached
+ *       401:
+ *         description: Unauthorized - missing or invalid token
+ *       403:
+ *         description: Forbidden - account is not active
+ *       404:
+ *         description: User or post not found
+ */
+router.post('/comment', commentValidation, commentOnPost);
 
 export default router;

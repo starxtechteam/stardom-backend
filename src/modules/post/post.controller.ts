@@ -693,3 +693,99 @@ export const dislikePost = asyncHandler(async(req, res) => {
         message: "Post disliked"
     });
 });
+
+export const commentOnPost = asyncHandler(async(req, res) => {
+    const userId = req.session?.userId;
+    const { postId, content, imageKey } = req.body;
+
+    if (!userId || !postId) {
+        throw new ApiError(400, "Invalid request");
+    }
+
+    const [user, post, lastComments] = await Promise.all([
+        prisma.user.findUnique({
+            where: { id: userId },
+            select: {
+                id: true,
+                status: true
+            }
+        }),
+
+        prisma.post.findUnique({
+            where: { id: postId },
+            include: {
+                user: true
+            }
+        }),
+
+        prisma.comment.findMany({
+            where: {userId, postId, parentId: null}
+        })
+    ]);
+
+    if (!user) {
+        throw new ApiError(404, "User not found");
+    }
+
+    if (user.status !== "active") {
+        throw new ApiError(403, `Your account is ${user.status}`);
+    }
+
+    if (!post) {
+        throw new ApiError(404, "Post not found");
+    }
+
+    if (post.status !== "active") {
+        throw new ApiError(400, `Post is ${post.status}`);
+    }
+
+    if(lastComments && lastComments.length > 10){
+        throw new ApiError(400, "Limit reached, Can't comment on this post");
+    }
+
+    const ip = getClientIp(req);
+    if(imageKey){
+        if(!await verifyFileKey(userId, imageKey, ip)){
+            throw new ApiError(400, "Invaild Image Key");
+        }
+    }
+
+    let newComment = await prisma.comment.create({
+        data: {
+            userId,
+            postId,
+            content,
+            image: imageKey
+        },
+    });
+
+    if(!newComment){
+        throw new ApiError(500, "Can't comment on this post");
+    }
+
+    if(post.user.id === userId){
+        newComment = await prisma.comment.update({
+            where: {id: newComment.id},
+            data: {
+                pin: true
+            }
+        })
+    }
+
+    await prisma.awsUploads.updateMany({
+        where: {
+            fileKey: imageKey,
+            ipAddress: ip,
+            userId
+        },
+        data: {
+            status: "USED"
+        }
+    });
+
+    return res.status(200).json({
+        success: true,
+        message: "Comment successfully",
+        newComment
+    });
+});
