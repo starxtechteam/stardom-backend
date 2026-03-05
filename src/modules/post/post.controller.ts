@@ -754,7 +754,7 @@ export const commentOnPost = asyncHandler(async(req, res) => {
         data: {
             userId,
             postId,
-            content,
+            content: content.trim(),
             image: imageKey
         },
     });
@@ -843,5 +843,74 @@ export const deleteComment = asyncHandler(async (req, res) => {
     return res.status(200).json({
         success: true,
         message: "Comment deleted successfully"
+    });
+});
+
+export const replyOnComment = asyncHandler(async (req, res) => {
+    const userId = req.session?.userId;
+    const { commentId, content } = req.body;
+
+    if(!userId){
+        throw new ApiError(401, "Unautherized")
+    }
+
+    if (!commentId || !content?.trim()) {
+        throw new ApiError(400, "commentId and content are required");
+    }
+
+    const parentComment = await prisma.comment.findUnique({
+        where: { id: commentId },
+        select: {
+            id: true,
+            postId: true,
+            post: {
+                select: {
+                    status: true,
+                    user: {
+                        select: { id: true, status: true }
+                    }
+                }
+            }
+        }
+    });
+
+    if (!parentComment) {
+        throw new ApiError(404, "Comment not found");
+    }
+
+    if (!parentComment.post.user || parentComment.post.user.status !== "active") {
+        throw new ApiError(400, `Your account is ${parentComment.post.user?.status}`);
+    }
+
+    if (parentComment.post.status !== "active") {
+        throw new ApiError(400, `Post is ${parentComment.post.status}`);
+    }
+
+    const reply = await prisma.comment.create({
+        data: {
+            userId,
+            postId: parentComment.postId,
+            parentId: parentComment.id,
+            content: content.trim()
+        },
+        select: {
+            id: true,
+            content: true,
+            createdAt: true,
+            parentId: true,
+            user: {
+                select: {
+                    id: true,
+                    username: true,
+                    avatarUrl: true
+                }
+            }
+        }
+    });
+
+    return res.status(201).json({
+        success: true,
+        message: "Reply added successfully",
+        reply
     });
 });

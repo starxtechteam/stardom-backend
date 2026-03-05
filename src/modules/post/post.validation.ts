@@ -87,6 +87,11 @@ const deleteComment = z.object({
     commentId: z.string().regex(uuidRegex, "Invalid UUID format"),
 });
 
+const commentReply = z.object({
+    commentId: z.string().regex(uuidRegex, "Invalid UUID format"),
+    content: z.string().max(1000, "Maximum 1000 characters")
+});
+
 export const createPostValidation = validationInput(postSchema);
 export const presignedUrlValidation = validationInput(presignedUrlSchema);
 export const postIdValidation = validationInput(uuidSchema, "params");
@@ -94,3 +99,4 @@ export const repostValidation = validationInput(repostFields);
 export const updateValidation = validationInput(updatePostFields);
 export const commentValidation = validationInput(postComment);
 export const deleteCommentValidation = validationInput(deleteComment, "params");
+export const commentReplyValidation = validationInput(commentReply);

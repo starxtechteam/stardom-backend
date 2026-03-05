@@ -10,6 +10,7 @@ import {
     dislikePost,
     commentOnPost,
     deleteComment,
+    replyOnComment,
 } from "./post.controller.ts";
 import {
     createPostValidation,
@@ -19,6 +20,7 @@ import {
     updateValidation,
     commentValidation,
     deleteCommentValidation,
+    commentReplyValidation,
 } from "./post.validation.ts";
 import { createVerifyToken } from "../../middlewares/auth.ts";
 
@@ -444,6 +446,43 @@ router.patch('/dislike/:postId', postIdValidation, dislikePost);
  *         description: User or post not found
  */
 router.post('/comment', commentValidation, commentOnPost);
+
+/**
+ * @swagger
+ * /api/v1/post/comment/reply:
+ *   post:
+ *     summary: Reply to a comment
+ *     description: Add a reply to an existing comment on an active post.
+ *     tags: [Post]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - commentId
+ *               - content
+ *             properties:
+ *               commentId:
+ *                 type: string
+ *                 format: uuid
+ *               content:
+ *                 type: string
+ *                 maxLength: 1000
+ *     responses:
+ *       201:
+ *         description: Reply added successfully
+ *       400:
+ *         description: Missing/invalid input or inactive post/account
+ *       401:
+ *         description: Unauthorized - missing or invalid token
+ *       404:
+ *         description: Comment not found
+ */
+router.post("/comment/reply", commentReplyValidation, replyOnComment);
 
 /**
  * @swagger
