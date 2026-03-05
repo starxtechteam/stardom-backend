@@ -563,7 +563,10 @@ model Comment {
   postId String @db.Uuid
 
   content  String
+  image    String?
   parentId String? @db.Uuid
+
+  pin Boolean @default(false)
 
   likeCount Int      @default(0)
   createdAt DateTime @default(now())

@@ -7,7 +7,11 @@ import {
     updatePost,
     bookmarkPost,
     likePost,
-    dislikePost
+    dislikePost,
+    commentOnPost,
+    editComment,
+    deleteComment,
+    replyOnComment,
 } from "./post.controller.ts";
 import {
     createPostValidation,
@@ -15,6 +19,10 @@ import {
     postIdValidation,
     repostValidation,
     updateValidation,
+    commentValidation,
+    deleteCommentValidation,
+    commentReplyValidation,
+    editCommentValidation,
 } from "./post.validation.ts";
 import { createVerifyToken } from "../../middlewares/auth.ts";
 
@@ -397,5 +405,158 @@ router.patch('/like/:postId', postIdValidation, likePost);
  *         description: User or post not found
  */
 router.patch('/dislike/:postId', postIdValidation, dislikePost);
+
+/**
+ * @swagger
+ * /api/v1/post/comment:
+ *   post:
+ *     summary: Comment on a post
+ *     description: Add a comment to an active post as the authenticated user, with optional image attachment.
+ *     tags: [Post]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - postId
+ *               - content
+ *             properties:
+ *               postId:
+ *                 type: string
+ *                 format: uuid
+ *               content:
+ *                 type: string
+ *                 maxLength: 1000
+ *               imageKey:
+ *                 type: string
+ *                 maxLength: 500
+ *                 description: Optional uploaded image file key
+ *     responses:
+ *       200:
+ *         description: Comment created successfully
+ *       400:
+ *         description: Invalid request, inactive post, invalid image key, or comment limit reached
+ *       401:
+ *         description: Unauthorized - missing or invalid token
+ *       403:
+ *         description: Forbidden - account is not active
+ *       404:
+ *         description: User or post not found
+ */
+router.post('/comment', commentValidation, commentOnPost);
+
+/**
+ * @swagger
+ * /api/v1/post/comment:
+ *   put:
+ *     summary: Edit a comment
+ *     description: Update the authenticated user's existing comment on an active post.
+ *     tags: [Post]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - commentId
+ *               - content
+ *             properties:
+ *               commentId:
+ *                 type: string
+ *                 format: uuid
+ *               content:
+ *                 type: string
+ *                 maxLength: 1000
+ *     responses:
+ *       200:
+ *         description: Comment updated successfully
+ *       400:
+ *         description: Invalid request or post is not active
+ *       401:
+ *         description: Unauthorized - missing or invalid token
+ *       403:
+ *         description: Forbidden - account is not active or comment does not belong to user
+ *       404:
+ *         description: User or comment not found
+ */
+router.put('/comment', editCommentValidation, editComment);
+
+/**
+ * @swagger
+ * /api/v1/post/comment/reply:
+ *   post:
+ *     summary: Reply to a comment
+ *     description: Add a reply to an existing comment on an active post.
+ *     tags: [Post]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - commentId
+ *               - content
+ *             properties:
+ *               commentId:
+ *                 type: string
+ *                 format: uuid
+ *               content:
+ *                 type: string
+ *                 maxLength: 1000
+ *     responses:
+ *       201:
+ *         description: Reply added successfully
+ *       400:
+ *         description: Missing/invalid input or inactive post/account
+ *       401:
+ *         description: Unauthorized - missing or invalid token
+ *       404:
+ *         description: Comment not found
+ */
+router.post("/comment/reply", commentReplyValidation, replyOnComment);
+
+/**
+ * @swagger
+ * /api/v1/post/comment/{postId}/{commentId}:
+ *   delete:
+ *     summary: Delete a comment
+ *     description: Delete the authenticated user's comment from an active post.
+ *     tags: [Post]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: postId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *       - in: path
+ *         name: commentId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Comment deleted successfully
+ *       400:
+ *         description: Invalid request or post/account is not active
+ *       401:
+ *         description: Unauthorized - missing or invalid token
+ *       404:
+ *         description: Post not found or invalid comment id
+ */
+router.delete('/comment/:postId/:commentId', deleteCommentValidation, deleteComment);
 
 export default router;

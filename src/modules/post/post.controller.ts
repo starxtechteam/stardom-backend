@@ -693,3 +693,292 @@ export const dislikePost = asyncHandler(async(req, res) => {
         message: "Post disliked"
     });
 });
+
+export const commentOnPost = asyncHandler(async(req, res) => {
+    const userId = req.session?.userId;
+    const { postId, content, imageKey } = req.body;
+
+    if (!userId || !postId) {
+        throw new ApiError(400, "Invalid request");
+    }
+
+    const [user, post, lastComments] = await Promise.all([
+        prisma.user.findUnique({
+            where: { id: userId },
+            select: {
+                id: true,
+                status: true
+            }
+        }),
+
+        prisma.post.findUnique({
+            where: { id: postId },
+            include: {
+                user: true
+            }
+        }),
+
+        prisma.comment.findMany({
+            where: {userId, postId, parentId: null}
+        })
+    ]);
+
+    if (!user) {
+        throw new ApiError(404, "User not found");
+    }
+
+    if (user.status !== "active") {
+        throw new ApiError(403, `Your account is ${user.status}`);
+    }
+
+    if (!post) {
+        throw new ApiError(404, "Post not found");
+    }
+
+    if (post.status !== "active") {
+        throw new ApiError(400, `Post is ${post.status}`);
+    }
+
+    if(lastComments && lastComments.length > 10){
+        throw new ApiError(400, "Limit reached, Can't comment on this post");
+    }
+
+    const ip = getClientIp(req);
+    if(imageKey){
+        if(!await verifyFileKey(userId, imageKey, ip)){
+            throw new ApiError(400, "Invaild Image Key");
+        }
+    }
+
+    let newComment = await prisma.comment.create({
+        data: {
+            userId,
+            postId,
+            content: content.trim(),
+            image: imageKey
+        },
+    });
+
+    if(!newComment){
+        throw new ApiError(500, "Can't comment on this post");
+    }
+
+    if(post.user.id === userId){
+        newComment = await prisma.comment.update({
+            where: {id: newComment.id},
+            data: {
+                pin: true
+            }
+        })
+    }
+
+    await prisma.awsUploads.updateMany({
+        where: {
+            fileKey: imageKey,
+            ipAddress: ip,
+            userId
+        },
+        data: {
+            status: "USED"
+        }
+    });
+
+    return res.status(200).json({
+        success: true,
+        message: "Comment successfully",
+        newComment
+    });
+});
+
+export const editComment = asyncHandler(async (req, res) => {
+    const userId = req.session?.userId;
+    const { commentId, content } = req.body;
+
+    if (!userId || !commentId || !content?.trim()) {
+        throw new ApiError(400, "Invalid request");
+    }
+
+    const [user, comment] = await Promise.all([
+        prisma.user.findUnique({
+            where: { id: userId },
+            select: {
+                id: true,
+                status: true
+            }
+        }),
+
+        prisma.comment.findUnique({
+            where: { id: commentId },
+            include: {
+                post: true
+            }
+        })
+    ]);
+
+    if (!user) {
+        throw new ApiError(404, "User not found");
+    }
+
+    if (user.status !== "active") {
+        throw new ApiError(403, `Your account is ${user.status}`);
+    }
+
+    if (!comment) {
+        throw new ApiError(404, "Comment not found");
+    }
+
+    if (comment.userId !== userId) {
+        throw new ApiError(403, "You are not allowed to edit this comment");
+    }
+
+    const EDIT_LIMIT = 15 * 60 * 1000;
+    if (Date.now() - new Date(comment.createdAt).getTime() > EDIT_LIMIT) {
+        throw new ApiError(403, "Edit time expired");
+    }
+
+    if (comment.post.status !== "active") {
+        throw new ApiError(400, `Post is ${comment.post.status}`);
+    }
+
+    if (comment.content === content.trim()) {
+        throw new ApiError(400, "No changes detected");
+    }
+
+    const updatedComment = await prisma.comment.update({
+        where: { id: commentId },
+        data: {
+            content: content.trim()
+        }
+    });
+
+    return res.status(200).json({
+        success: true,
+        message: "Comment updated successfully",
+        updatedComment
+    });
+});
+
+export const deleteComment = asyncHandler(async (req, res) => {
+    const userId = req.session?.userId;
+    const { postId, commentId } = req.params;
+
+    const post = await prisma.post.findUnique({
+        where: { id: postId },
+        select: {
+            status: true,
+            user: {
+                select: { status: true }
+            }
+        }
+    });
+
+    if (!post) {
+        throw new ApiError(404, "Post not found");
+    }
+
+    if (!post.user || post.user.status !== "active") {
+        throw new ApiError(400, `Your account is ${post.user?.status}`);
+    }
+
+    if (post.status !== "active") {
+        throw new ApiError(400, `Post is ${post.status}`);
+    }
+
+    const comment = await prisma.comment.findFirst({
+        where: {
+            id: commentId,
+            postId,
+            userId
+        },
+        select: {
+            id: true,
+            image: true
+        }
+    });
+
+    if (!comment) {
+        throw new ApiError(404, "Invalid comment id");
+    }
+
+    if (comment.image) {
+        await deleteFile(comment.image, userId);
+    }
+
+    await prisma.comment.delete({
+        where: { id: commentId }
+    });
+
+    return res.status(200).json({
+        success: true,
+        message: "Comment deleted successfully"
+    });
+});
+
+export const replyOnComment = asyncHandler(async (req, res) => {
+    const userId = req.session?.userId;
+    const { commentId, content } = req.body;
+
+    if(!userId){
+        throw new ApiError(401, "Unautherized")
+    }
+
+    if (!commentId || !content?.trim()) {
+        throw new ApiError(400, "commentId and content are required");
+    }
+
+    const parentComment = await prisma.comment.findUnique({
+        where: { id: commentId },
+        select: {
+            id: true,
+            postId: true,
+            post: {
+                select: {
+                    status: true,
+                    user: {
+                        select: { id: true, status: true }
+                    }
+                }
+            }
+        }
+    });
+
+    if (!parentComment) {
+        throw new ApiError(404, "Comment not found");
+    }
+
+    if (!parentComment.post.user || parentComment.post.user.status !== "active") {
+        throw new ApiError(400, `Your account is ${parentComment.post.user?.status}`);
+    }
+
+    if (parentComment.post.status !== "active") {
+        throw new ApiError(400, `Post is ${parentComment.post.status}`);
+    }
+
+    const reply = await prisma.comment.create({
+        data: {
+            userId,
+            postId: parentComment.postId,
+            parentId: parentComment.id,
+            content: content.trim()
+        },
+        select: {
+            id: true,
+            content: true,
+            createdAt: true,
+            parentId: true,
+            user: {
+                select: {
+                    id: true,
+                    username: true,
+                    avatarUrl: true
+                }
+            }
+        }
+    });
+
+    return res.status(201).json({
+        success: true,
+        message: "Reply added successfully",
+        reply
+    });
+});
