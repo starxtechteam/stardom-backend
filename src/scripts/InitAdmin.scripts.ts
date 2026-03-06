@@ -14,6 +14,7 @@ async function initAdmin(username: string, role: Role) {
                 username
             }
         });
+        
         if(!user){
             console.log("User not found");
             return;
@@ -50,6 +51,6 @@ async function initAdmin(username: string, role: Role) {
     }
 }
 
-await initAdmin("some", "superadmin");
+await initAdmin("manveersingh.23", "superadmin");
 console.log("------------------Done--------------");
 process.exit(1);

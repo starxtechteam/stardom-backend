@@ -14,7 +14,7 @@
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
     "aws:delete": "node ./src/scripts/aws.scripts.ts",
-    "admin:init": "node ./src/scripts/InitAdmin.scripts.ts"
+    "admin:init": "tsx ./src/scripts/InitAdmin.scripts.ts"
   },
   "repository": {
     "type": "git",
