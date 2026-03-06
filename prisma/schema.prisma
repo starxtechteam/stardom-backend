@@ -73,7 +73,7 @@ model User {
   isPremium   Boolean   @default(false)
   premiumEnds DateTime?
 
-  fcmToken   String?
+  fcmToken String?
 
   lastSeenAt DateTime?
   deletedAt  DateTime?
@@ -92,12 +92,13 @@ model User {
   awsUploads     AwsUploads[]
   admin          Admin?
 
-  posts     Post[]
-  postLikes PostLike[]
-  comments  Comment[]
-  postViews PostView[]
-  bookmarks Bookmark[]
-  hashtag   Hashtag[]
+  posts       Post[]
+  postLikes   PostLike[]
+  comments    Comment[]
+  commentLike CommentLike[]
+  postViews   PostView[]
+  bookmarks   Bookmark[]
+  hashtag     Hashtag[]
 
   // 🔔 FIXED NOTIFICATION RELATIONS
   notifications      Notification[] @relation("UserNotifications") // received
@@ -111,8 +112,8 @@ model User {
   followers Follow[] @relation("Followers")
   following Follow[] @relation("Following")
 
-  tokenHashes TokenHash[]
-  deletionSchedule DeletionSchedule[]
+  tokenHashes             TokenHash[]
+  deletionSchedule        DeletionSchedule[]
   trinityUserAuthenticate TrinityUserAuthenticate[]
 
   sharePost SharePost[]
@@ -121,54 +122,52 @@ model User {
 }
 
 enum DeletionStatus {
-  PENDING     // deletion requested, waiting for grace period
-  RECOVERED   // user logged back in and canceled deletion
-  DELETED     // account permanently deleted
+  PENDING // deletion requested, waiting for grace period
+  RECOVERED // user logged back in and canceled deletion
+  DELETED // account permanently deleted
 }
 
-
 model DeletionSchedule {
-  id        String   @id @default(uuid()) @db.Uuid
+  id String @id @default(uuid()) @db.Uuid
 
-  userId    String   @unique @db.Uuid
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String @unique @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  status    DeletionStatus @default(PENDING)
+  status DeletionStatus @default(PENDING)
 
-  requestedAt  DateTime @default(now())
-  scheduledAt  DateTime
+  requestedAt DateTime @default(now())
+  scheduledAt DateTime
 
-  recoveredAt  DateTime?
-  deletedAt    DateTime?
+  recoveredAt DateTime?
+  deletedAt   DateTime?
 
-  reason       String?   @db.VarChar(255)
+  reason String? @db.VarChar(255)
 
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([status, scheduledAt])
 }
 
-
 model TokenHash {
-  id  String @id @default(uuid()) @db.Uuid
+  id        String  @id @default(uuid()) @db.Uuid
   token     String
   tokenHash String
-  userIp String?
-  
+  userIp    String?
+
   userId String? @db.Uuid
   user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  createdAt DateTime @default(now())
+
+  createdAt DateTime  @default(now())
   expiresAt DateTime?
 }
 
 model TrinityUserAuthenticate {
-  id String @id @default(uuid()) @db.Uuid
+  id     String @id @default(uuid()) @db.Uuid
   userId String @db.Uuid
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  logs String?
+  logs      String?
   createdAt DateTime @default(now())
 }
 
@@ -234,7 +233,7 @@ model LoginAttempt {
   os         String
   browser    String
   success    Boolean
-  message     String
+  message    String
   createdAt  DateTime @default(now())
 
   @@index([identifier, createdAt])
@@ -317,31 +316,31 @@ model EmailUpdatesHistory {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   previousEmail String @unique
-  newEmail String @unique
+  newEmail      String @unique
 
   updatedAt DateTime @default(now())
 }
 
 enum UploadStatus {
-  CREATED   
-  USED      
-  DELETED  
+  CREATED
+  USED
+  DELETED
 }
 
 model AwsUploads {
-  id         String        @id @default(uuid()) @db.Uuid
-  userId     String        @db.Uuid
-  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  mimeType   String
-  fileKey    String        @unique
-  uploadUrl  String
-  ipAddress  String
+  mimeType  String
+  fileKey   String @unique
+  uploadUrl String
+  ipAddress String
 
-  status     UploadStatus @default(CREATED)
+  status UploadStatus @default(CREATED)
 
-  createdAt  DateTime     @default(now())
-  updatedAt  DateTime     @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([userId])
   @@index([status])
@@ -380,24 +379,24 @@ model Admin {
   deactivatedBy String?   @db.Uuid
 
   createdAt DateTime @default(now())
-  createdBy String @db.Uuid
+  createdBy String   @db.Uuid
   updatedAt DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  sessions   AdminSession[]
-  otp        AdminOtp[]
-  totp       AdminTotp[]
-  tokenHash  AdminTokenHash[]
+  sessions  AdminSession[]
+  otp       AdminOtp[]
+  totp      AdminTotp[]
+  tokenHash AdminTokenHash[]
 }
 
 // =====================================================
 // ADMIN SESSIONS (ZERO TRUST)
 // =====================================================
 model AdminSession {
-  id     String @id @default(uuid()) @db.Uuid
+  id      String @id @default(uuid()) @db.Uuid
   adminId String @db.Uuid
-  admin   Admin   @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  admin   Admin  @relation(fields: [adminId], references: [id], onDelete: Cascade)
 
   refreshTokenHash  String  @unique
   previousTokenHash String?
@@ -418,9 +417,9 @@ model AdminSession {
 }
 
 model AdminOtp {
-  id     String @id @default(uuid()) @db.Uuid
+  id      String @id @default(uuid()) @db.Uuid
   adminId String @db.Uuid
-  admin   Admin   @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  admin   Admin  @relation(fields: [adminId], references: [id], onDelete: Cascade)
 
   purpose  String
   codeHash String
@@ -436,22 +435,22 @@ model AdminOtp {
 }
 
 model AdminTokenHash {
-  id  String @id @default(uuid()) @db.Uuid
+  id String @id @default(uuid()) @db.Uuid
 
   tokenHash String
-  userIp String?
-  
+  userIp    String?
+
   adminId String @db.Uuid
-  admin   Admin   @relation(fields: [adminId], references: [id], onDelete: Cascade)
- 
-  createdAt DateTime @default(now())
+  admin   Admin  @relation(fields: [adminId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime  @default(now())
   expiresAt DateTime?
 }
 
 model AdminTotp {
-  id   String @id @default(uuid()) @db.Uuid
+  id      String @id @default(uuid()) @db.Uuid
   adminId String @db.Uuid
-  admin   Admin   @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  admin   Admin  @relation(fields: [adminId], references: [id], onDelete: Cascade)
 
   secret String
   issuer String @default("Stardom")
@@ -494,9 +493,9 @@ enum PostStatus {
 }
 
 enum SharePostStatus {
-  seen 
-  sent 
-  unsent 
+  seen
+  sent
+  unsent
 }
 
 // =======================
@@ -511,7 +510,7 @@ model Post {
   content  String?
   postType PostType
 
-  images   String[] @default([])
+  images String[] @default([])
 
   mediaUrl     String?
   thumbnailUrl String?
@@ -541,7 +540,8 @@ model Post {
   bookmarks     Bookmark[]
   notifications Notification[]
 
-  sharePost SharePost[]
+  sharePost    SharePost[]
+  commentLikes CommentLike[]
 
   @@index([userId])
   @@index([createdAt(sort: Desc)])
@@ -560,6 +560,7 @@ model PostLike {
   userId    String   @db.Uuid
   postId    String   @db.Uuid
   createdAt DateTime @default(now())
+  isLiked   Boolean
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
@@ -581,12 +582,27 @@ model Comment {
   likeCount Int      @default(0)
   createdAt DateTime @default(now())
 
-  user    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  post    Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
-  parent  Comment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
-  replies Comment[] @relation("CommentReplies")
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post        Post          @relation(fields: [postId], references: [id], onDelete: Cascade)
+  parent      Comment?      @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies     Comment[]     @relation("CommentReplies")
+  commentLike CommentLike[]
 
   @@index([postId])
+}
+
+model CommentLike {
+  userId    String @db.Uuid
+  postId    String @db.Uuid
+  commentId String @db.Uuid
+
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post    Post    @relation(fields: [postId], references: [id], onDelete: Cascade)
+  comment Comment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@id([userId, postId])
 }
 
 model Follow {
@@ -616,8 +632,8 @@ model Hashtag {
   tag String @unique
 
   createdBy String @db.Uuid
-  user User @relation(fields: [createdBy], references: [id], onDelete: Cascade)
-  
+  user      User   @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+
   createdAt DateTime @default(now())
 
   posts PostHashtag[]
@@ -636,13 +652,13 @@ model PostHashtag {
 }
 
 model SharePost {
-  id  String @id @default(uuid()) @db.Uuid
-  
+  id String @id @default(uuid()) @db.Uuid
+
   postId String @db.Uuid
   post   Post   @relation(fields: [postId], references: [id], onDelete: Cascade)
 
   userId String @db.Uuid
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   source SharePostStatus
 

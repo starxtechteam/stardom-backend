@@ -1,28 +1,30 @@
 import express from "express";
 import {
-    createPost,
-    deletePost,
-    rePost,
-    generatePresignedUrl,
-    updatePost,
-    bookmarkPost,
-    likePost,
-    dislikePost,
-    commentOnPost,
-    editComment,
-    deleteComment,
-    replyOnComment,
+  createPost,
+  deletePost,
+  rePost,
+  generatePresignedUrl,
+  updatePost,
+  bookmarkPost,
+  likePost,
+  dislikePost,
+  commentOnPost,
+  editComment,
+  deleteComment,
+  replyOnComment,
+  likeComment,
 } from "./post.controller.ts";
 import {
-    createPostValidation,
-    presignedUrlValidation,
-    postIdValidation,
-    repostValidation,
-    updateValidation,
-    commentValidation,
-    deleteCommentValidation,
-    commentReplyValidation,
-    editCommentValidation,
+  createPostValidation,
+  presignedUrlValidation,
+  postIdValidation,
+  repostValidation,
+  updateValidation,
+  commentValidation,
+  deleteCommentValidation,
+  commentReplyValidation,
+  editCommentValidation,
+  likeCommentValidation,
 } from "./post.validation.ts";
 import { createVerifyToken } from "../../middlewares/auth.ts";
 
@@ -75,7 +77,7 @@ router.use(createVerifyToken("user"));
  *       401:
  *         description: Unauthorized - missing or invalid token
  */
-router.post('/presigned-url', presignedUrlValidation, generatePresignedUrl);
+router.post("/presigned-url", presignedUrlValidation, generatePresignedUrl);
 
 /**
  * @swagger
@@ -200,7 +202,7 @@ router.post('/presigned-url', presignedUrlValidation, generatePresignedUrl);
  *       401:
  *         description: Unauthorized - missing or invalid token
  */
-router.post('/', createPostValidation, createPost);
+router.post("/", createPostValidation, createPost);
 
 /**
  * @swagger
@@ -244,7 +246,7 @@ router.post('/', createPostValidation, createPost);
  *       403:
  *         description: Forbidden - post does not belong to authenticated user
  */
-router.put('/update', updateValidation, updatePost);
+router.put("/update", updateValidation, updatePost);
 
 /**
  * @swagger
@@ -314,7 +316,7 @@ router.delete("/:postId", postIdValidation, deletePost);
  *       404:
  *         description: Post not found
  */
-router.post('/repost', repostValidation, rePost);
+router.post("/repost", repostValidation, rePost);
 
 /**
  * @swagger
@@ -344,7 +346,7 @@ router.post('/repost', repostValidation, rePost);
  *       404:
  *         description: User or post not found
  */
-router.post('/bookmark/:postId', postIdValidation, bookmarkPost);
+router.post("/bookmark/:postId", postIdValidation, bookmarkPost);
 
 /**
  * @swagger
@@ -374,7 +376,7 @@ router.post('/bookmark/:postId', postIdValidation, bookmarkPost);
  *       404:
  *         description: User or post not found
  */
-router.patch('/like/:postId', postIdValidation, likePost);
+router.patch("/like/:postId", postIdValidation, likePost);
 
 /**
  * @swagger
@@ -404,7 +406,7 @@ router.patch('/like/:postId', postIdValidation, likePost);
  *       404:
  *         description: User or post not found
  */
-router.patch('/dislike/:postId', postIdValidation, dislikePost);
+router.patch("/dislike/:postId", postIdValidation, dislikePost);
 
 /**
  * @swagger
@@ -447,7 +449,7 @@ router.patch('/dislike/:postId', postIdValidation, dislikePost);
  *       404:
  *         description: User or post not found
  */
-router.post('/comment', commentValidation, commentOnPost);
+router.post("/comment", commentValidation, commentOnPost);
 
 /**
  * @swagger
@@ -486,7 +488,7 @@ router.post('/comment', commentValidation, commentOnPost);
  *       404:
  *         description: User or comment not found
  */
-router.put('/comment', editCommentValidation, editComment);
+router.put("/comment", editCommentValidation, editComment);
 
 /**
  * @swagger
@@ -557,6 +559,12 @@ router.post("/comment/reply", commentReplyValidation, replyOnComment);
  *       404:
  *         description: Post not found or invalid comment id
  */
-router.delete('/comment/:postId/:commentId', deleteCommentValidation, deleteComment);
+router.delete(
+  "/comment/:postId/:commentId",
+  deleteCommentValidation,
+  deleteComment,
+);
+
+router.post("/like-unlike-comment/:commentId/:postId", likeComment);
 
 export default router;

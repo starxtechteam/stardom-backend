@@ -3,982 +3,1082 @@ import { ApiError } from "../../utils/api-error.js";
 import { prisma } from "../../config/prisma.config.ts";
 import { redisClient, REDIS_KEYS } from "../../config/redis.config.ts";
 import { bulkNotificationQueue } from "../../config/queue.ts";
-import { deleteFile, deleteFiles, generateMultipleUploadURLs, generateUploadURL } from "../../config/aws.ts";
+import {
+  deleteFile,
+  deleteFiles,
+  generateMultipleUploadURLs,
+  generateUploadURL,
+} from "../../config/aws.ts";
 import { getClientIp } from "../auth/auth.service.ts";
 import { verifyFileKey, verifyFileKeys } from "./post.services.ts";
 
 export const generatePresignedUrl = asyncHandler(async (req, res) => {
-    const userId = req.session?.userId;
-    const { mimeTypes, postType } = req.body;
+  const userId = req.session?.userId;
+  const { mimeTypes, postType } = req.body;
 
-    if (!userId) {
-        throw new ApiError(401, "unauthorized");
+  if (!userId) {
+    throw new ApiError(401, "unauthorized");
+  }
+
+  const ip = getClientIp(req);
+
+  if (postType === "image") {
+    if (!Array.isArray(mimeTypes) || mimeTypes.length === 0) {
+      throw new ApiError(400, "mimeTypes must be a non-empty array");
     }
 
-    const ip = getClientIp(req);
+    const allowedMimeTypes = [
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+      "image/gif",
+    ];
 
-    if (postType === "image") {
-        if (!Array.isArray(mimeTypes) || mimeTypes.length === 0) {
-            throw new ApiError(400, "mimeTypes must be a non-empty array");
-        }
+    // Validate all mime types
+    const invalidType = mimeTypes.find(
+      (type) => !allowedMimeTypes.includes(type),
+    );
 
-        const allowedMimeTypes = [
-            "image/jpeg",
-            "image/png",
-            "image/webp",
-            "image/gif",
-        ];
-
-        // Validate all mime types
-        const invalidType = mimeTypes.find(
-            (type) => !allowedMimeTypes.includes(type)
-        );
-
-        if (invalidType) {
-            throw new ApiError(400, `Unsupported file type: ${invalidType}`);
-        }
-
-        // Generate URLs
-        const payload = await generateMultipleUploadURLs(mimeTypes);
-
-        // Prepare bulk insert
-        const uploadRecords = payload.map((item) => ({
-            userId,
-            mimeType: item.contentType,
-            fileKey: item.key,
-            uploadUrl: item.url,
-            ipAddress: ip,
-        }));
-
-        await prisma.awsUploads.createMany({
-            data: uploadRecords,
-        });
-
-        return res.status(200).json({
-            success: true,
-            data: payload,
-        });
+    if (invalidType) {
+      throw new ApiError(400, `Unsupported file type: ${invalidType}`);
     }
 
-    if (postType === "reel" || postType === "video") {
+    // Generate URLs
+    const payload = await generateMultipleUploadURLs(mimeTypes);
 
-        if (!mimeTypes) {
-            throw new ApiError(400, "mimeType is required");
-        }
+    // Prepare bulk insert
+    const uploadRecords = payload.map((item) => ({
+      userId,
+      mimeType: item.contentType,
+      fileKey: item.key,
+      uploadUrl: item.url,
+      ipAddress: ip,
+    }));
 
-        const allowedMimeTypes = [
-            "video/mp4",
-            "video/webm",
-        ];
+    await prisma.awsUploads.createMany({
+      data: uploadRecords,
+    });
 
-        if (!allowedMimeTypes.includes(mimeTypes)) {
-            throw new ApiError(400, "Unsupported file type");
-        }
+    return res.status(200).json({
+      success: true,
+      data: payload,
+    });
+  }
 
-        const { url, key } = await generateUploadURL(mimeTypes);
-
-        await prisma.awsUploads.create({
-            data: {
-                userId,
-                mimeType: mimeTypes,
-                fileKey: key,
-                uploadUrl: url,
-                ipAddress: ip,
-            },
-        });
-
-        return res.status(200).json({
-            success: true,
-            message: "Presigned URL generated",
-            uploadUrl: url,
-            fileKey: key,
-        });
+  if (postType === "reel" || postType === "video") {
+    if (!mimeTypes) {
+      throw new ApiError(400, "mimeType is required");
     }
 
-    throw new ApiError(400, "Invalid postType");
+    const allowedMimeTypes = ["video/mp4", "video/webm"];
+
+    if (!allowedMimeTypes.includes(mimeTypes)) {
+      throw new ApiError(400, "Unsupported file type");
+    }
+
+    const { url, key } = await generateUploadURL(mimeTypes);
+
+    await prisma.awsUploads.create({
+      data: {
+        userId,
+        mimeType: mimeTypes,
+        fileKey: key,
+        uploadUrl: url,
+        ipAddress: ip,
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Presigned URL generated",
+      uploadUrl: url,
+      fileKey: key,
+    });
+  }
+
+  throw new ApiError(400, "Invalid postType");
 });
 
-export const createPost = asyncHandler(async(req, res) => {
-    const { postType, tags=[], visibility, status } = req.body;
-    const userId = req.session?.userId;
+export const createPost = asyncHandler(async (req, res) => {
+  const { postType, tags = [], visibility, status } = req.body;
+  const userId = req.session?.userId;
 
-    if(!userId){
-        throw new ApiError(401, "unauthorized");
+  if (!userId) {
+    throw new ApiError(401, "unauthorized");
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+  });
+
+  if (!user) {
+    throw new ApiError(400, "User not found");
+  }
+
+  if (user.status !== "active") {
+    throw new ApiError(400, `Account is ${user.status}`);
+  }
+
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const postLimit = await prisma.post.findMany({
+    where: {
+      userId,
+      createdAt: {
+        gte: startOfToday,
+      },
+    },
+  });
+
+  if (postLimit.length > 10) {
+    throw new ApiError(400, "Post limit reached of today");
+  }
+
+  const ip = getClientIp(req);
+
+  let post = null;
+  if (postType === "text") {
+    const { content } = req.body;
+    if (!content) {
+      throw new ApiError(400, "content is required");
     }
 
-    const user = await prisma.user.findUnique({
-        where: { id: userId }
+    post = await prisma.post.create({
+      data: {
+        userId,
+        content,
+        postType,
+        visibility,
+        status,
+      },
+    });
+  } else if (postType === "image") {
+    let { content, images = [] } = req.body;
+    if (images.length === 0) {
+      throw new ApiError(400, "images is required");
+    }
+
+    images = [...new Set(images)];
+
+    // verify images urls
+    const isVerified = await verifyFileKeys(userId, images, ip);
+    if (!isVerified) {
+      throw new ApiError(400, "Invaild Images");
+    }
+
+    post = await prisma.post.create({
+      data: {
+        userId,
+        content,
+        postType,
+        images,
+        visibility,
+        status,
+      },
     });
 
-    if(!user){
-        throw new ApiError(400, "User not found");
-    }
-
-    if(user.status !== "active"){
-        throw new ApiError(400, `Account is ${user.status}`);
-    }
-
-    const startOfToday = new Date();
-    startOfToday.setHours(0, 0, 0, 0);
-    const postLimit = await prisma.post.findMany({
-        where: {
-            userId,
-            createdAt: {
-                gte: startOfToday,
-            },
+    await prisma.awsUploads.updateMany({
+      where: {
+        fileKey: {
+          in: images,
         },
+        userId,
+        ipAddress: ip,
+      },
+      data: {
+        status: "USED",
+      },
+    });
+  } else if (postType === "video") {
+    const { content, mediaUrl, thumbnailUrl, durationSec } = req.body;
+
+    const isVerified = await verifyFileKey(userId, mediaUrl, ip);
+    if (!isVerified) {
+      throw new ApiError(400, "Invaild Video");
+    }
+
+    post = await prisma.post.create({
+      data: {
+        userId,
+        content,
+        postType,
+        mediaUrl,
+        thumbnailUrl,
+        durationSec,
+        visibility,
+        status,
+      },
     });
 
-    if(postLimit.length > 10){
-        throw new ApiError(400, "Post limit reached of today")
+    await prisma.awsUploads.updateMany({
+      where: {
+        fileKey: mediaUrl,
+        userId,
+        ipAddress: ip,
+      },
+      data: {
+        status: "USED",
+      },
+    });
+  } else if (postType === "reel") {
+    const {
+      content,
+      mediaUrl,
+      thumbnailUrl,
+      durationSec,
+      musicName,
+      musicUrl,
+    } = req.body;
+
+    const isVerified = await verifyFileKey(userId, mediaUrl, ip);
+    if (!isVerified) {
+      throw new ApiError(500, "Invaild reel");
     }
 
-    const ip = getClientIp(req);
-
-    let post = null;
-    if(postType === "text"){
-        const {content} = req.body;
-        if(!content){
-            throw new ApiError(400, "content is required");
-        }
-
-        post = await prisma.post.create({
-            data: {
-                userId,
-                content,
-                postType,
-                visibility,
-                status
-            }
-        });
-
-    } else if (postType === "image"){
-        let { content, images=[] } = req.body;
-        if(images.length === 0){
-            throw new ApiError(400, "images is required");
-        }
-
-        images = [...new Set(images)];
-
-        // verify images urls
-        const isVerified = await verifyFileKeys(userId, images, ip);
-        if(!isVerified){
-            throw new ApiError(400, "Invaild Images");
-        }
-
-        post = await prisma.post.create({
-            data: {
-                userId,
-                content,
-                postType,
-                images,
-                visibility,
-                status
-            }
-        });
-
-        await prisma.awsUploads.updateMany({
-            where: {
-                fileKey: {
-                    in: images
-                },
-                userId,
-                ipAddress: ip
-            },
-            data: {
-                status: "USED"
-            }
-        });
-    } else if(postType === "video"){
-        const {content, mediaUrl, thumbnailUrl, durationSec} = req.body;
-
-        const isVerified = await verifyFileKey(userId, mediaUrl, ip);
-        if(!isVerified){
-            throw new ApiError(400, "Invaild Video")
-        }
-
-        post = await prisma.post.create({
-            data: {
-                userId,
-                content,
-                postType,
-                mediaUrl,
-                thumbnailUrl,
-                durationSec,
-                visibility,
-                status
-            }
-        });
-
-        await prisma.awsUploads.updateMany({
-            where: {
-                fileKey: mediaUrl,
-                userId,
-                ipAddress: ip
-            },
-            data: {
-                status: "USED"
-            }
-        });
-    } else if(postType === "reel") {
-        const {content, mediaUrl, thumbnailUrl, durationSec, musicName, musicUrl} = req.body;
-
-        const isVerified = await verifyFileKey(userId, mediaUrl, ip);
-        if(!isVerified){
-            throw new ApiError(500, "Invaild reel")
-        }
-
-        post = await prisma.post.create({
-            data: {
-                userId,
-                content,
-                postType,
-                mediaUrl,
-                thumbnailUrl,
-                durationSec,
-                visibility,
-                status
-            }
-        });
-
-        await prisma.reel.create({
-            data: {
-                postId: post.id,
-                musicName,
-                musicUrl
-            }
-        });
-
-        await prisma.awsUploads.updateMany({
-            where: {
-                fileKey: mediaUrl,
-                userId,
-                ipAddress: ip
-            },
-            data: {
-                status: "USED"
-            }
-        });
-    }
-
-    if(!post){
-        throw new ApiError(400, "Something went wrong")
-    }
-
-    await prisma.$transaction(async (tx) => {
-        await tx.hashtag.createMany({
-            data: tags.map((tag: string) => ({
-                tag,
-                createdBy: userId,
-            })),
-            skipDuplicates: true,
-        });
-
-        const savedTags = await tx.hashtag.findMany({
-            where: {
-                tag: { in: tags },
-                createdBy: userId,
-            },
-        });
-
-        await tx.postHashtag.createMany({
-            data: savedTags.map((tag) => ({
-                postId: post.id,
-                hashtagId: tag.id,
-            })),
-            skipDuplicates: true,
-        });
+    post = await prisma.post.create({
+      data: {
+        userId,
+        content,
+        postType,
+        mediaUrl,
+        thumbnailUrl,
+        durationSec,
+        visibility,
+        status,
+      },
     });
 
-    // notify to all followers
-    await bulkNotificationQueue.add("Post-Notification", {
+    await prisma.reel.create({
+      data: {
         postId: post.id,
-        userId: userId
+        musicName,
+        musicUrl,
+      },
     });
 
-    return res.status(200).json({
-        success: true,
-        message: "New post created."
+    await prisma.awsUploads.updateMany({
+      where: {
+        fileKey: mediaUrl,
+        userId,
+        ipAddress: ip,
+      },
+      data: {
+        status: "USED",
+      },
     });
+  }
+
+  if (!post) {
+    throw new ApiError(400, "Something went wrong");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.hashtag.createMany({
+      data: tags.map((tag: string) => ({
+        tag,
+        createdBy: userId,
+      })),
+      skipDuplicates: true,
+    });
+
+    const savedTags = await tx.hashtag.findMany({
+      where: {
+        tag: { in: tags },
+        createdBy: userId,
+      },
+    });
+
+    await tx.postHashtag.createMany({
+      data: savedTags.map((tag) => ({
+        postId: post.id,
+        hashtagId: tag.id,
+      })),
+      skipDuplicates: true,
+    });
+  });
+
+  // notify to all followers
+  await bulkNotificationQueue.add("Post-Notification", {
+    postId: post.id,
+    userId: userId,
+  });
+
+  return res.status(200).json({
+    success: true,
+    message: "New post created.",
+  });
 });
 
-export const updatePost = asyncHandler(async(req, res) => {
-    const { postId, content, visibility, status } = req.body;
-    const userId = req.session?.userId;
+export const updatePost = asyncHandler(async (req, res) => {
+  const { postId, content, visibility, status } = req.body;
+  const userId = req.session?.userId;
 
-    if(!userId || !postId){
-        throw new ApiError(400, "Invaild request");
-    }
+  if (!userId || !postId) {
+    throw new ApiError(400, "Invaild request");
+  }
 
-    const post = await prisma.post.findFirst({
-        where: {id: postId},
-        include: {
-            user: {
-                select: {
-                    id: true,
-                    status: true,
-                }
-            }
-        }
-    });
-
-    if(!post){
-        throw new ApiError(400, "Post not found");
-    }
-
-    if(post.userId !== userId){
-        throw new ApiError(403, "Forbidden");
-    }
-
-    if(!post.user){
-        throw new ApiError(400, "user not found");
-    }
-
-    if(post.user.status !== "active"){
-        throw new ApiError(400, `Your account is ${post.user.status}`);
-    }
-
-    const isUpdated = await prisma.post.update({
-        where: {id: postId},
-        data:{
-            content,
-            status,
-            visibility
-        }
-    });
-
-    if(!isUpdated){
-        throw new ApiError(400, "Something went wrong, Please try again later.")
-    }
-
-    return res.status(200).json({
-        success: true,
-        message: "Post updated successfully"
-    });
-});
-
-export const deletePost = asyncHandler(async(req, res) => {
-    const userId = req.session?.userId;
-    const { postId } = req.params;
-
-    if(!userId){
-        throw new ApiError(401, "Unauthorized");
-    }
-
-    if(!postId){
-        throw new ApiError(400, "Post id is required");
-    }
-
-    const post = await prisma.post.findFirst({
-        where: {id: postId},
-        include: {
-            user: {
-                select: {
-                    id: true,
-                    username: true,
-                    email: true,
-                    status: true
-                }
-            }
-        }
-    });
-
-    if(!post){
-        throw new ApiError(400, "Invaild post id");
-    }
-
-    if(post.user.id !== userId){
-        throw new ApiError(403, "Forbiden");
-    }
-
-    if(post.user.status !== "active"){
-        throw new ApiError(400, `Your account is ${post.user.status}`);
-    }
-
-    if(post.postType === "image"){
-        const fileKeys = post.images;
-        await deleteFiles(fileKeys, userId);
-    }
-
-    if(post.postType === "video" || post.postType === "reel"){
-        if(post.mediaUrl) await deleteFile(post.mediaUrl, userId);
-        if(post.thumbnailUrl) await deleteFile(post.thumbnailUrl, userId);
-    }
-
-    if(post.postType === "reel"){
-        await prisma.reel.delete({
-            where: {postId: postId}
-        })
-    }
-
-    await prisma.$transaction([
-        prisma.postHashtag.deleteMany({
-            where: {postId:post.id}
-        }),
-
-        prisma.post.delete({
-            where:{id: postId}
-        }),
-    ]);
-
-    return res.status(200).json({
-        success: true,
-        message: "Post deleted sucessfully"
-    });
-});
-
-export const rePost = asyncHandler(async(req, res) => {
-    const { postId, content, visibility } = req.body;
-    const userId = req.session?.userId;
-
-    if(!userId){
-        throw new ApiError(401, "unauthorized");
-    }
-
-    if(!postId){
-        throw new ApiError(400, "Post_id is required");
-    }
-
-    const parent_post = await prisma.post.findUnique({
-        where:{id: postId}
-    });
-
-    if(!parent_post){
-        throw new ApiError(404, "Post not found");
-    }
-
-    if(parent_post.status !== "active"){
-        throw new ApiError(400, `Post is ${parent_post.status}`)
-    }
-
-    if(parent_post.visibility === "private"){
-        throw new ApiError(403, "You can't respost this post");
-    }
-
-    const alreadyReposted = await prisma.post.findFirst({
-        where: {
-            userId: userId,
-            parentPostId: parent_post.id,
-        }
-    });
-
-    if(alreadyReposted){
-        throw new ApiError(400, "You already reposted this.");
-    }
-
-    const startOfToday = new Date();
-    startOfToday.setHours(0, 0, 0, 0);
-    const postLimit = await prisma.post.findMany({
-        where: {
-            userId,
-            postType:"repost",
-            createdAt: {
-                gte: startOfToday,
-            },
+  const post = await prisma.post.findFirst({
+    where: { id: postId },
+    include: {
+      user: {
+        select: {
+          id: true,
+          status: true,
         },
+      },
+    },
+  });
+
+  if (!post) {
+    throw new ApiError(400, "Post not found");
+  }
+
+  if (post.userId !== userId) {
+    throw new ApiError(403, "Forbidden");
+  }
+
+  if (!post.user) {
+    throw new ApiError(400, "user not found");
+  }
+
+  if (post.user.status !== "active") {
+    throw new ApiError(400, `Your account is ${post.user.status}`);
+  }
+
+  const isUpdated = await prisma.post.update({
+    where: { id: postId },
+    data: {
+      content,
+      status,
+      visibility,
+    },
+  });
+
+  if (!isUpdated) {
+    throw new ApiError(400, "Something went wrong, Please try again later.");
+  }
+
+  return res.status(200).json({
+    success: true,
+    message: "Post updated successfully",
+  });
+});
+
+export const deletePost = asyncHandler(async (req, res) => {
+  const userId = req.session?.userId;
+  const { postId } = req.params;
+
+  if (!userId) {
+    throw new ApiError(401, "Unauthorized");
+  }
+
+  if (!postId) {
+    throw new ApiError(400, "Post id is required");
+  }
+
+  const post = await prisma.post.findFirst({
+    where: { id: postId },
+    include: {
+      user: {
+        select: {
+          id: true,
+          username: true,
+          email: true,
+          status: true,
+        },
+      },
+    },
+  });
+
+  if (!post) {
+    throw new ApiError(400, "Invaild post id");
+  }
+
+  if (post.user.id !== userId) {
+    throw new ApiError(403, "Forbiden");
+  }
+
+  if (post.user.status !== "active") {
+    throw new ApiError(400, `Your account is ${post.user.status}`);
+  }
+
+  if (post.postType === "image") {
+    const fileKeys = post.images;
+    await deleteFiles(fileKeys, userId);
+  }
+
+  if (post.postType === "video" || post.postType === "reel") {
+    if (post.mediaUrl) await deleteFile(post.mediaUrl, userId);
+    if (post.thumbnailUrl) await deleteFile(post.thumbnailUrl, userId);
+  }
+
+  if (post.postType === "reel") {
+    await prisma.reel.delete({
+      where: { postId: postId },
     });
+  }
 
-    if(postLimit.length > 10){
-        throw new ApiError(400, "Post limit reached of today");
-    }
+  await prisma.$transaction([
+    prisma.postHashtag.deleteMany({
+      where: { postId: post.id },
+    }),
 
-    const newPost = await prisma.post.create({
-        data:{
-            userId,
-            content,
-            postType: "repost",
-            isReply: true,
-            parentPostId: parent_post.id,
-            visibility
-        }
-    });
+    prisma.post.delete({
+      where: { id: postId },
+    }),
+  ]);
 
-    if(!newPost){
-        throw new ApiError(400, "something went wrong please try later.")
-    }
+  return res.status(200).json({
+    success: true,
+    message: "Post deleted sucessfully",
+  });
+});
 
-    return res.status(200).json({
-        success: true,
-        message: "Post reposted"
-    });
+export const rePost = asyncHandler(async (req, res) => {
+  const { postId, content, visibility } = req.body;
+  const userId = req.session?.userId;
+
+  if (!userId) {
+    throw new ApiError(401, "unauthorized");
+  }
+
+  if (!postId) {
+    throw new ApiError(400, "Post_id is required");
+  }
+
+  const parent_post = await prisma.post.findUnique({
+    where: { id: postId },
+  });
+
+  if (!parent_post) {
+    throw new ApiError(404, "Post not found");
+  }
+
+  if (parent_post.status !== "active") {
+    throw new ApiError(400, `Post is ${parent_post.status}`);
+  }
+
+  if (parent_post.visibility === "private") {
+    throw new ApiError(403, "You can't respost this post");
+  }
+
+  const alreadyReposted = await prisma.post.findFirst({
+    where: {
+      userId: userId,
+      parentPostId: parent_post.id,
+    },
+  });
+
+  if (alreadyReposted) {
+    throw new ApiError(400, "You already reposted this.");
+  }
+
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const postLimit = await prisma.post.findMany({
+    where: {
+      userId,
+      postType: "repost",
+      createdAt: {
+        gte: startOfToday,
+      },
+    },
+  });
+
+  if (postLimit.length > 10) {
+    throw new ApiError(400, "Post limit reached of today");
+  }
+
+  const newPost = await prisma.post.create({
+    data: {
+      userId,
+      content,
+      postType: "repost",
+      isReply: true,
+      parentPostId: parent_post.id,
+      visibility,
+    },
+  });
+
+  if (!newPost) {
+    throw new ApiError(400, "something went wrong please try later.");
+  }
+
+  return res.status(200).json({
+    success: true,
+    message: "Post reposted",
+  });
 });
 
 export const bookmarkPost = asyncHandler(async (req, res) => {
-    const {postId} = req.params;
-    const userId = req.session?.userId;
+  const { postId } = req.params;
+  const userId = req.session?.userId;
 
-    if (!userId || !postId) {
-        throw new ApiError(400, "Invalid request");
-    }
+  if (!userId || !postId) {
+    throw new ApiError(400, "Invalid request");
+  }
 
-    const [user, post] = await Promise.all([
-        prisma.user.findUnique({
-            where: { id: userId },
-            select: { id: true, status: true }
-        }),
+  const [user, post] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, status: true },
+    }),
 
-        prisma.post.findUnique({
-            where: { id: postId },
-            select: { id: true, status: true }
-        })
-    ]);
+    prisma.post.findUnique({
+      where: { id: postId },
+      select: { id: true, status: true },
+    }),
+  ]);
 
-    if (!user) {
-        throw new ApiError(404, "User not found");
-    }
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
 
-    if (user.status !== "active") {
-        throw new ApiError(403, `Your account is ${user.status}`);
-    }
+  if (user.status !== "active") {
+    throw new ApiError(403, `Your account is ${user.status}`);
+  }
 
-    if (!post) {
-        throw new ApiError(404, "Post not found");
-    }
+  if (!post) {
+    throw new ApiError(404, "Post not found");
+  }
 
-    if (post.status !== "active") {
-        throw new ApiError(400, `Post is ${post.status}`);
-    }
+  if (post.status !== "active") {
+    throw new ApiError(400, `Post is ${post.status}`);
+  }
 
-    try {
-        await prisma.bookmark.create({
-            data: {
-                userId,
-                postId
-            }
-        });
-    } catch (error : any) {
-        // Handle duplicate bookmark
-        if (error.code === "P2002") {
-            throw new ApiError(400, "You have already bookmarked this post");
-        }
-
-        throw new ApiError(500, "Something went wrong");
-    }
-
-    return res.status(200).json({
-        success: true,
-        message: "Post bookmarked successfully"
+  try {
+    await prisma.bookmark.create({
+      data: {
+        userId,
+        postId,
+      },
     });
+  } catch (error: any) {
+    // Handle duplicate bookmark
+    if (error.code === "P2002") {
+      throw new ApiError(400, "You have already bookmarked this post");
+    }
+
+    throw new ApiError(500, "Something went wrong");
+  }
+
+  return res.status(200).json({
+    success: true,
+    message: "Post bookmarked successfully",
+  });
 });
 
-export const likePost = asyncHandler(async(req, res) => {
-    const { postId } = req.params;
-    const userId = req.session?.userId;
+export const likePost = asyncHandler(async (req, res) => {
+  const { postId } = req.params;
+  const userId = req.session?.userId;
 
-    if (!userId || !postId) {
-        throw new ApiError(400, "Invalid request");
-    }
+  if (!userId || !postId) {
+    throw new ApiError(400, "Invalid request");
+  }
 
-    const [user, post] = await Promise.all([
-        prisma.user.findUnique({
-            where: { id: userId },
-            select: { id: true, status: true }
-        }),
+  const [user, post] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, status: true },
+    }),
 
-        prisma.post.findUnique({
-            where: { id: postId },
-            select: { id: true, status: true, likeCount: true }
-        })
-    ]);
+    prisma.post.findUnique({
+      where: { id: postId },
+      select: { id: true, status: true, likeCount: true },
+    }),
+  ]);
 
-    if (!user) {
-        throw new ApiError(404, "User not found");
-    }
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
 
-    if (user.status !== "active") {
-        throw new ApiError(403, `Your account is ${user.status}`);
-    }
+  if (user.status !== "active") {
+    throw new ApiError(403, `Your account is ${user.status}`);
+  }
 
-    if (!post) {
-        throw new ApiError(404, "Post not found");
-    }
+  if (!post) {
+    throw new ApiError(404, "Post not found");
+  }
 
-    if (post.status !== "active") {
-        throw new ApiError(400, `Post is ${post.status}`);
-    }
+  if (post.status !== "active") {
+    throw new ApiError(400, `Post is ${post.status}`);
+  }
 
-    try{
-        await prisma.postLike.create({
-            data: {
-                userId, postId
-            }
-        });
-    } catch(error: any){
-        if (error.code === "P2002") {
-            throw new ApiError(400, "You have already liked this post");
-        }
-
-        throw new ApiError(500, "Something went wrong");
-    }
-
-    await prisma.post.update({
-        where: {id: postId},
-        data: {
-            likeCount: {
-                increment: 1
-            }
-        }
+  try {
+    await prisma.postLike.create({
+      data: {
+        userId,
+        postId,
+        isLiked: true,
+      },
     });
+  } catch (error: any) {
+    if (error.code === "P2002") {
+      throw new ApiError(400, "You have already liked this post");
+    }
 
-    return res.status(200).json({
-        success: true,
-        message: "Post Liked"
-    })
+    throw new ApiError(500, "Something went wrong");
+  }
+
+  await prisma.post.update({
+    where: { id: postId },
+    data: {
+      likeCount: {
+        increment: 1,
+      },
+    },
+  });
+
+  return res.status(200).json({
+    success: true,
+    message: "Post Liked",
+  });
 });
 
-export const dislikePost = asyncHandler(async(req, res) => {
-    const userId = req.session?.userId;
-    const { postId } = req.params;
+export const dislikePost = asyncHandler(async (req, res) => {
+  const userId = req.session?.userId;
+  const { postId } = req.params;
 
-    if (!userId || !postId) {
-        throw new ApiError(400, "Invalid request");
-    }
+  if (!userId || !postId) {
+    throw new ApiError(400, "Invalid request");
+  }
 
-    const [user, post] = await Promise.all([
-        prisma.user.findUnique({
-            where: { id: userId },
-            select: { id: true, status: true }
-        }),
+  const [user, post] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, status: true },
+    }),
 
-        prisma.post.findUnique({
-            where: { id: postId },
-            select: { id: true, status: true, likeCount: true }
-        })
-    ]);
+    prisma.post.findUnique({
+      where: { id: postId },
+      select: { id: true, status: true, likeCount: true },
+    }),
+  ]);
 
-    if (!user) {
-        throw new ApiError(404, "User not found");
-    }
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
 
-    if (user.status !== "active") {
-        throw new ApiError(403, `Your account is ${user.status}`);
-    }
+  if (user.status !== "active") {
+    throw new ApiError(403, `Your account is ${user.status}`);
+  }
 
-    if (!post) {
-        throw new ApiError(404, "Post not found");
-    }
+  if (!post) {
+    throw new ApiError(404, "Post not found");
+  }
 
-    if (post.status !== "active") {
-        throw new ApiError(400, `Post is ${post.status}`);
-    }
+  if (post.status !== "active") {
+    throw new ApiError(400, `Post is ${post.status}`);
+  }
 
-    const alreadyLiked = await prisma.postLike.findFirst({
-        where: { userId, postId}
-    });
+  const alreadyLiked = await prisma.postLike.findFirst({
+    where: { userId, postId },
+  });
 
-    if(!alreadyLiked){
-        return res.status(200).json({
-            success: true,
-            message: "Post disliked"
-        });
-    }
-
-    await prisma.postLike.deleteMany({
-        where: {
-            userId, postId
-        }
-    })
-
-    await prisma.post.update({
-        where: {id: postId},
-        data: {
-            likeCount: {
-                decrement: 1
-            }
-        }
-    });
-
+  if (!alreadyLiked) {
     return res.status(200).json({
-        success: true,
-        message: "Post disliked"
+      success: true,
+      message: "Post disliked",
     });
+  }
+
+  await prisma.postLike.deleteMany({
+    where: {
+      userId,
+      postId,
+    },
+  });
+
+  await prisma.post.update({
+    where: { id: postId },
+    data: {
+      likeCount: {
+        decrement: 1,
+      },
+    },
+  });
+
+  return res.status(200).json({
+    success: true,
+    message: "Post disliked",
+  });
 });
 
-export const commentOnPost = asyncHandler(async(req, res) => {
-    const userId = req.session?.userId;
-    const { postId, content, imageKey } = req.body;
+export const commentOnPost = asyncHandler(async (req, res) => {
+  const userId = req.session?.userId;
+  const { postId, content, imageKey } = req.body;
 
-    if (!userId || !postId) {
-        throw new ApiError(400, "Invalid request");
+  if (!userId || !postId) {
+    throw new ApiError(400, "Invalid request");
+  }
+
+  const [user, post, lastComments] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        status: true,
+      },
+    }),
+
+    prisma.post.findUnique({
+      where: { id: postId },
+      include: {
+        user: true,
+      },
+    }),
+
+    prisma.comment.findMany({
+      where: { userId, postId, parentId: null },
+    }),
+  ]);
+
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  if (user.status !== "active") {
+    throw new ApiError(403, `Your account is ${user.status}`);
+  }
+
+  if (!post) {
+    throw new ApiError(404, "Post not found");
+  }
+
+  if (post.status !== "active") {
+    throw new ApiError(400, `Post is ${post.status}`);
+  }
+
+  if (lastComments && lastComments.length > 10) {
+    throw new ApiError(400, "Limit reached, Can't comment on this post");
+  }
+
+  const ip = getClientIp(req);
+  if (imageKey) {
+    if (!(await verifyFileKey(userId, imageKey, ip))) {
+      throw new ApiError(400, "Invaild Image Key");
     }
+  }
 
-    const [user, post, lastComments] = await Promise.all([
-        prisma.user.findUnique({
-            where: { id: userId },
-            select: {
-                id: true,
-                status: true
-            }
-        }),
+  let newComment = await prisma.comment.create({
+    data: {
+      userId,
+      postId,
+      content: content.trim(),
+      image: imageKey,
+    },
+  });
 
-        prisma.post.findUnique({
-            where: { id: postId },
-            include: {
-                user: true
-            }
-        }),
+  if (!newComment) {
+    throw new ApiError(500, "Can't comment on this post");
+  }
 
-        prisma.comment.findMany({
-            where: {userId, postId, parentId: null}
-        })
-    ]);
-
-    if (!user) {
-        throw new ApiError(404, "User not found");
-    }
-
-    if (user.status !== "active") {
-        throw new ApiError(403, `Your account is ${user.status}`);
-    }
-
-    if (!post) {
-        throw new ApiError(404, "Post not found");
-    }
-
-    if (post.status !== "active") {
-        throw new ApiError(400, `Post is ${post.status}`);
-    }
-
-    if(lastComments && lastComments.length > 10){
-        throw new ApiError(400, "Limit reached, Can't comment on this post");
-    }
-
-    const ip = getClientIp(req);
-    if(imageKey){
-        if(!await verifyFileKey(userId, imageKey, ip)){
-            throw new ApiError(400, "Invaild Image Key");
-        }
-    }
-
-    let newComment = await prisma.comment.create({
-        data: {
-            userId,
-            postId,
-            content: content.trim(),
-            image: imageKey
-        },
+  if (post.user.id === userId) {
+    newComment = await prisma.comment.update({
+      where: { id: newComment.id },
+      data: {
+        pin: true,
+      },
     });
+  }
 
-    if(!newComment){
-        throw new ApiError(500, "Can't comment on this post");
-    }
+  await prisma.awsUploads.updateMany({
+    where: {
+      fileKey: imageKey,
+      ipAddress: ip,
+      userId,
+    },
+    data: {
+      status: "USED",
+    },
+  });
 
-    if(post.user.id === userId){
-        newComment = await prisma.comment.update({
-            where: {id: newComment.id},
-            data: {
-                pin: true
-            }
-        })
-    }
-
-    await prisma.awsUploads.updateMany({
-        where: {
-            fileKey: imageKey,
-            ipAddress: ip,
-            userId
-        },
-        data: {
-            status: "USED"
-        }
-    });
-
-    return res.status(200).json({
-        success: true,
-        message: "Comment successfully",
-        newComment
-    });
+  return res.status(200).json({
+    success: true,
+    message: "Comment successfully",
+    newComment,
+  });
 });
 
 export const editComment = asyncHandler(async (req, res) => {
-    const userId = req.session?.userId;
-    const { commentId, content } = req.body;
+  const userId = req.session?.userId;
+  const { commentId, content } = req.body;
 
-    if (!userId || !commentId || !content?.trim()) {
-        throw new ApiError(400, "Invalid request");
-    }
+  if (!userId || !commentId || !content?.trim()) {
+    throw new ApiError(400, "Invalid request");
+  }
 
-    const [user, comment] = await Promise.all([
-        prisma.user.findUnique({
-            where: { id: userId },
-            select: {
-                id: true,
-                status: true
-            }
-        }),
+  const [user, comment] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        status: true,
+      },
+    }),
 
-        prisma.comment.findUnique({
-            where: { id: commentId },
-            include: {
-                post: true
-            }
-        })
-    ]);
+    prisma.comment.findUnique({
+      where: { id: commentId },
+      include: {
+        post: true,
+      },
+    }),
+  ]);
 
-    if (!user) {
-        throw new ApiError(404, "User not found");
-    }
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
 
-    if (user.status !== "active") {
-        throw new ApiError(403, `Your account is ${user.status}`);
-    }
+  if (user.status !== "active") {
+    throw new ApiError(403, `Your account is ${user.status}`);
+  }
 
-    if (!comment) {
-        throw new ApiError(404, "Comment not found");
-    }
+  if (!comment) {
+    throw new ApiError(404, "Comment not found");
+  }
 
-    if (comment.userId !== userId) {
-        throw new ApiError(403, "You are not allowed to edit this comment");
-    }
+  if (comment.userId !== userId) {
+    throw new ApiError(403, "You are not allowed to edit this comment");
+  }
 
-    const EDIT_LIMIT = 15 * 60 * 1000;
-    if (Date.now() - new Date(comment.createdAt).getTime() > EDIT_LIMIT) {
-        throw new ApiError(403, "Edit time expired");
-    }
+  const EDIT_LIMIT = 15 * 60 * 1000;
+  if (Date.now() - new Date(comment.createdAt).getTime() > EDIT_LIMIT) {
+    throw new ApiError(403, "Edit time expired");
+  }
 
-    if (comment.post.status !== "active") {
-        throw new ApiError(400, `Post is ${comment.post.status}`);
-    }
+  if (comment.post.status !== "active") {
+    throw new ApiError(400, `Post is ${comment.post.status}`);
+  }
 
-    if (comment.content === content.trim()) {
-        throw new ApiError(400, "No changes detected");
-    }
+  if (comment.content === content.trim()) {
+    throw new ApiError(400, "No changes detected");
+  }
 
-    const updatedComment = await prisma.comment.update({
-        where: { id: commentId },
-        data: {
-            content: content.trim()
-        }
-    });
+  const updatedComment = await prisma.comment.update({
+    where: { id: commentId },
+    data: {
+      content: content.trim(),
+    },
+  });
 
-    return res.status(200).json({
-        success: true,
-        message: "Comment updated successfully",
-        updatedComment
-    });
+  return res.status(200).json({
+    success: true,
+    message: "Comment updated successfully",
+    updatedComment,
+  });
 });
 
 export const deleteComment = asyncHandler(async (req, res) => {
-    const userId = req.session?.userId;
-    const { postId, commentId } = req.params;
+  const userId = req.session?.userId;
+  const { postId, commentId } = req.params;
 
-    const post = await prisma.post.findUnique({
-        where: { id: postId },
-        select: {
-            status: true,
-            user: {
-                select: { status: true }
-            }
-        }
-    });
+  const post = await prisma.post.findUnique({
+    where: { id: postId },
+    select: {
+      status: true,
+      user: {
+        select: { status: true },
+      },
+    },
+  });
 
-    if (!post) {
-        throw new ApiError(404, "Post not found");
-    }
+  if (!post) {
+    throw new ApiError(404, "Post not found");
+  }
 
-    if (!post.user || post.user.status !== "active") {
-        throw new ApiError(400, `Your account is ${post.user?.status}`);
-    }
+  if (!post.user || post.user.status !== "active") {
+    throw new ApiError(400, `Your account is ${post.user?.status}`);
+  }
 
-    if (post.status !== "active") {
-        throw new ApiError(400, `Post is ${post.status}`);
-    }
+  if (post.status !== "active") {
+    throw new ApiError(400, `Post is ${post.status}`);
+  }
 
-    const comment = await prisma.comment.findFirst({
-        where: {
-            id: commentId,
-            postId,
-            userId
-        },
-        select: {
-            id: true,
-            image: true
-        }
-    });
+  const comment = await prisma.comment.findFirst({
+    where: {
+      id: commentId,
+      postId,
+      userId,
+    },
+    select: {
+      id: true,
+      image: true,
+    },
+  });
 
-    if (!comment) {
-        throw new ApiError(404, "Invalid comment id");
-    }
+  if (!comment) {
+    throw new ApiError(404, "Invalid comment id");
+  }
 
-    if (comment.image) {
-        await deleteFile(comment.image, userId);
-    }
+  if (comment.image) {
+    await deleteFile(comment.image, userId);
+  }
 
-    await prisma.comment.delete({
-        where: { id: commentId }
-    });
+  await prisma.comment.delete({
+    where: { id: commentId },
+  });
 
-    return res.status(200).json({
-        success: true,
-        message: "Comment deleted successfully"
-    });
+  return res.status(200).json({
+    success: true,
+    message: "Comment deleted successfully",
+  });
 });
 
 export const replyOnComment = asyncHandler(async (req, res) => {
-    const userId = req.session?.userId;
-    const { commentId, content } = req.body;
+  const userId = req.session?.userId;
+  const { commentId, content } = req.body;
 
-    if(!userId){
-        throw new ApiError(401, "Unautherized")
-    }
+  if (!userId) {
+    throw new ApiError(401, "Unautherized");
+  }
 
-    if (!commentId || !content?.trim()) {
-        throw new ApiError(400, "commentId and content are required");
-    }
+  if (!commentId || !content?.trim()) {
+    throw new ApiError(400, "commentId and content are required");
+  }
 
-    const parentComment = await prisma.comment.findUnique({
-        where: { id: commentId },
+  const parentComment = await prisma.comment.findUnique({
+    where: { id: commentId },
+    select: {
+      id: true,
+      postId: true,
+      post: {
         select: {
-            id: true,
-            postId: true,
-            post: {
-                select: {
-                    status: true,
-                    user: {
-                        select: { id: true, status: true }
-                    }
-                }
-            }
-        }
-    });
-
-    if (!parentComment) {
-        throw new ApiError(404, "Comment not found");
-    }
-
-    if (!parentComment.post.user || parentComment.post.user.status !== "active") {
-        throw new ApiError(400, `Your account is ${parentComment.post.user?.status}`);
-    }
-
-    if (parentComment.post.status !== "active") {
-        throw new ApiError(400, `Post is ${parentComment.post.status}`);
-    }
-
-    const reply = await prisma.comment.create({
-        data: {
-            userId,
-            postId: parentComment.postId,
-            parentId: parentComment.id,
-            content: content.trim()
+          status: true,
+          user: {
+            select: { id: true, status: true },
+          },
         },
+      },
+    },
+  });
+
+  if (!parentComment) {
+    throw new ApiError(404, "Comment not found");
+  }
+
+  if (!parentComment.post.user || parentComment.post.user.status !== "active") {
+    throw new ApiError(
+      400,
+      `Your account is ${parentComment.post.user?.status}`,
+    );
+  }
+
+  if (parentComment.post.status !== "active") {
+    throw new ApiError(400, `Post is ${parentComment.post.status}`);
+  }
+
+  const reply = await prisma.comment.create({
+    data: {
+      userId,
+      postId: parentComment.postId,
+      parentId: parentComment.id,
+      content: content.trim(),
+    },
+    select: {
+      id: true,
+      content: true,
+      createdAt: true,
+      parentId: true,
+      user: {
         select: {
-            id: true,
-            content: true,
-            createdAt: true,
-            parentId: true,
-            user: {
-                select: {
-                    id: true,
-                    username: true,
-                    avatarUrl: true
-                }
-            }
-        }
+          id: true,
+          username: true,
+          avatarUrl: true,
+        },
+      },
+    },
+  });
+
+  return res.status(201).json({
+    success: true,
+    message: "Reply added successfully",
+    reply,
+  });
+});
+
+export const likeComment = asyncHandler(async (req, res) => {
+  console.log('TOGGLE BUTTON TO LIKE OR DISLIKE COMMENT.')
+  const { commentId, postId } = req.params;
+  const userId = req.session?.userId;
+
+  if (!commentId) {
+    console.log("comment not found.");
+    throw new ApiError(404, "Comment not found.");
+  }
+
+  if (!postId) {
+    console.log("[post] not found.");
+    throw new ApiError(404, "Post not found.");
+  }
+
+  if (!userId) {
+    console.log("user not found.");
+    throw new ApiError(404, "unauthorized");
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+  });
+
+  if (!user) {
+    console.log('user not found.')
+    throw new ApiError(400, "User not found");
+  }
+
+  if (user.status !== "active") {
+    throw new ApiError(400, `Account is ${user.status}`);
+  }
+
+  //check if post exist
+  const post = await prisma.post.findUnique({
+    where: { id: postId },
+  });
+  if (!post) {
+    throw new ApiError(400, "Post not found.");
+  }
+
+  //check if comment exist
+  const comment = await prisma.comment.findUnique({
+    where: { id: commentId },
+  });
+  if (!comment) {
+    throw new ApiError(400, "Comment not found.");
+  }
+
+  const existingLike = await prisma.commentLike.findFirst({
+    where: {
+        userId,
+        postId,
+        commentId:comment.id
+    },
+  });
+
+  if (existingLike) {
+    await prisma.commentLike.delete({
+      where: {
+        userId_postId: {
+          userId,
+          postId,
+        },
+      },
     });
 
     return res.status(201).json({
-        success: true,
-        message: "Reply added successfully",
-        reply
+      success: true,
+      message: "Comment Unliked successfully.",
     });
+  } else {
+    await prisma.commentLike.create({
+      data: {
+        userId,
+        postId,
+        commentId,
+      },
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Comment Liked successfully.",
+    });
+  }
 });
