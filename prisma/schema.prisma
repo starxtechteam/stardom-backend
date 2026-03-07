@@ -100,6 +100,9 @@ model User {
   bookmarks   Bookmark[]
   hashtag     Hashtag[]
 
+  sentShares     SharePost[] @relation("PostSender")
+  receivedShares SharePost[] @relation("PostReceiver")
+
   // 🔔 FIXED NOTIFICATION RELATIONS
   notifications      Notification[] @relation("UserNotifications") // received
   actedNotifications Notification[] @relation("ActorNotifications") // triggered
@@ -115,8 +118,6 @@ model User {
   tokenHashes             TokenHash[]
   deletionSchedule        DeletionSchedule[]
   trinityUserAuthenticate TrinityUserAuthenticate[]
-
-  sharePost SharePost[]
 
   @@index([id], map: "idx_active_users")
 }
@@ -495,7 +496,14 @@ enum PostStatus {
 enum SharePostStatus {
   seen
   sent
-  unsent
+}
+
+enum SharePostSource {
+  whatsapp
+  instgram
+  facebook
+  twitter
+  inApp
 }
 
 // =======================
@@ -657,10 +665,16 @@ model SharePost {
   postId String @db.Uuid
   post   Post   @relation(fields: [postId], references: [id], onDelete: Cascade)
 
-  userId String @db.Uuid
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  senderId String @db.Uuid
+  sender   User   @relation("PostSender", fields: [senderId], references: [id], onDelete: Cascade)
 
-  source SharePostStatus
+  receiverId String? @db.Uuid
+  receiver   User?   @relation("PostReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  status SharePostStatus @default(sent)
+  source SharePostSource @default(inApp)
+
+  link String? 
 
   createdAt DateTime @default(now())
 }
