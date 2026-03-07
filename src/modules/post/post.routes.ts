@@ -13,6 +13,8 @@ import {
   deleteComment,
   replyOnComment,
   likeComment,
+  sharePostInApp,
+  sharePostExternally,
 } from "./post.controller.ts";
 import {
   createPostValidation,
@@ -27,6 +29,7 @@ import {
   likeCommentValidation,
 } from "./post.validation.ts";
 import { createVerifyToken } from "../../middlewares/auth.ts";
+import { authVerify } from "../auth/auth.validation.ts";
 
 const router = express.Router();
 router.use(createVerifyToken("user"));
@@ -566,5 +569,9 @@ router.delete(
 );
 
 router.post("/like-unlike-comment/:commentId/:postId", likeComment);
+router.post('/share-post-in-app/:postId/:receiverId', sharePostInApp)
+
+router.post('/share-post-externally/:postId', sharePostExternally)
+
 
 export default router;

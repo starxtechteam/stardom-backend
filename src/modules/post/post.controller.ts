@@ -11,6 +11,7 @@ import {
 } from "../../config/aws.ts";
 import { getClientIp } from "../auth/auth.service.ts";
 import { verifyFileKey, verifyFileKeys } from "./post.services.ts";
+import { Prisma } from "../../../generated/prisma/client.ts";
 
 export const generatePresignedUrl = asyncHandler(async (req, res) => {
   const userId = req.session?.userId;
@@ -997,22 +998,22 @@ export const replyOnComment = asyncHandler(async (req, res) => {
 });
 
 export const likeComment = asyncHandler(async (req, res) => {
-  console.log('TOGGLE BUTTON TO LIKE OR DISLIKE COMMENT.')
+  console.log("TOGGLE BUTTON TO LIKE OR DISLIKE COMMENT.");
   const { commentId, postId } = req.params;
   const userId = req.session?.userId;
 
   if (!commentId) {
-    console.log("comment not found.");
+    console.log("Comment not found.");
     throw new ApiError(404, "Comment not found.");
   }
 
   if (!postId) {
-    console.log("[post] not found.");
+    console.log("Post not found.");
     throw new ApiError(404, "Post not found.");
   }
 
   if (!userId) {
-    console.log("user not found.");
+    console.log("User not found.");
     throw new ApiError(404, "unauthorized");
   }
 
@@ -1021,7 +1022,7 @@ export const likeComment = asyncHandler(async (req, res) => {
   });
 
   if (!user) {
-    console.log('user not found.')
+    console.log("user not found.");
     throw new ApiError(400, "User not found");
   }
 
@@ -1047,9 +1048,9 @@ export const likeComment = asyncHandler(async (req, res) => {
 
   const existingLike = await prisma.commentLike.findFirst({
     where: {
-        userId,
-        postId,
-        commentId:comment.id
+      userId,
+      postId,
+      commentId: comment.id,
     },
   });
 
@@ -1081,4 +1082,138 @@ export const likeComment = asyncHandler(async (req, res) => {
       message: "Comment Liked successfully.",
     });
   }
+});
+
+export const sharePostInApp = asyncHandler(async (req, res) => {
+  console.log("SHARING POST");
+
+  const { postId, receiverId } = req.params;
+  const userId = req.session?.userId;
+
+  if (!userId) {
+    throw new ApiError(401, "Unauthorized");
+  }
+
+  if (!postId) {
+    throw new ApiError(400, "Post id is required");
+  }
+
+  if (!receiverId) {
+    throw new ApiError(400, "Receiver id is required");
+  }
+
+  const sender = await prisma.user.findUnique({
+    where: { id: userId },
+  });
+
+  if (!sender) {
+    throw new ApiError(404, "Sender not found");
+  }
+
+  if (sender.status !== "active") {
+    throw new ApiError(403, `Account is ${sender.status}`);
+  }
+
+  // ---------------- RECEIVER ----------------
+  const receiver = await prisma.user.findUnique({
+    where: { id: receiverId },
+  });
+
+  if (!receiver) {
+    throw new ApiError(404, "Receiver not found");
+  }
+
+  if (receiver.status !== "active") {
+    throw new ApiError(400, "Receiver account is not active");
+  }
+
+  // ---------------- POST ----------------
+  const post = await prisma.post.findUnique({
+    where: { id: postId },
+  });
+
+  if (!post) {
+    throw new ApiError(404, "Post not found");
+  }
+
+  if (post.status !== "active") {
+    throw new ApiError(400, "Post is not available.");
+  }
+
+  await prisma.sharePost.create({
+    data: {
+      senderId: userId,
+      receiverId,
+      postId,
+    },
+  });
+
+  return res.status(201).json({
+    success: true,
+    message: "Post sent successfully.",
+  });
+});
+
+export const sharePostExternally = asyncHandler(async (req, res) => {
+  console.log("SHARING POST");
+
+  const { postId, link } = req.params;
+  const { source } = req.body;
+
+  if (!source) {
+    throw new ApiError(
+      404,
+      "Please mention source where you are sending your post.",
+    );
+  }
+
+  const userId = req.session?.userId;
+
+  if (!userId) {
+    throw new ApiError(401, "Unauthorized");
+  }
+
+  if (!postId) {
+    throw new ApiError(400, "Post id is required");
+  }
+
+  const sender = await prisma.user.findUnique({
+    where: { id: userId },
+  });
+
+  if (!sender) {
+    throw new ApiError(404, "Sender not found");
+  }
+
+  if (sender.status !== "active") {
+    throw new ApiError(403, `Account is ${sender.status}`);
+  }
+
+  // ---------------- POST ----------------
+  const post = await prisma.post.findUnique({
+    where: { id: postId },
+  });
+
+  if (!post) {
+    throw new ApiError(404, "Post not found");
+  }
+
+  if (post.status !== "active") {
+    throw new ApiError(400, "Post is not available.");
+  }
+
+  const createdPost = await prisma.sharePost.create({
+    data: {
+      senderId: userId,
+      postId: postId,
+      link: link,
+      source: source,
+    },
+  });
+
+  return res.status(201).json({
+    success: true,
+    message: "Post sent successfully.",
+    data: createdPost,
+  });
 });
